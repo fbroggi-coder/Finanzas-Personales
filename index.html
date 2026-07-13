@@ -210,7 +210,7 @@ const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
 
 const CATS_GASTO = ["Fijo", "Variable", "Vacaciones"];
 const CATS_INGRESO = ["Fijo", "Variable"];
-const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Transporte", "Vivienda"];
+const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Transporte", "Vivienda"];
 const SUBCATS_INGRESO_DEFAULT = ["Alquiler", "Bono", "Comisiones", "Sueldo"];
 
 let sb = null;        // cliente de Supabase
@@ -239,6 +239,10 @@ function migrar(d) {
     delete d.categorias;
   }
   if (!d.subcatsIngreso) d.subcatsIngreso = SUBCATS_INGRESO_DEFAULT.slice();
+  // Asegura que las subcategorías nuevas aparezcan aunque los datos guardados sean anteriores
+  ["Impuestos"].forEach(s => {
+    if (!d.subcatsGasto.includes(s)) { d.subcatsGasto.push(s); ordenar(d.subcatsGasto); }
+  });
   (d.movimientos || []).forEach(m => {
     if (!m.subcategoria) {
       m.subcategoria = m.categoria || "Otros";
