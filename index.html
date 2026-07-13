@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mis Finanzas</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --text: #1e2633; --muted: #6b7686;
+    --border: #e3e8ef; --primary: #2563eb; --green: #16a34a; --red: #dc2626;
+    --amber: #d97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--card); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 20px; margin-right: auto; }
+  .rate-box { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .rate-box select, .rate-box input { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; }
+  .rate-box input { width: 90px; }
+  button { cursor: pointer; border: none; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: var(--primary); color: #fff; }
+  button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: transparent; color: var(--red); padding: 2px 8px; font-size: 16px; }
+  nav { display: flex; gap: 4px; padding: 12px 24px 0; }
+  nav button { background: transparent; color: var(--muted); border-radius: 8px 8px 0 0; padding: 10px 18px; font-weight: 600; }
+  nav button.active { background: var(--card); color: var(--primary); border: 1px solid var(--border); border-bottom: none; }
+  main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .card .label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .card .value { font-size: 22px; font-weight: 700; }
+  .green { color: var(--green); } .red { color: var(--red); } .amber { color: var(--amber); }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .chart-card h3 { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  .chart-card.wide { grid-column: 1 / -1; }
+  form.mov-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
+  form.mov-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
+  form.mov-form input, form.mov-form select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--border); }
+  th { background: #f8fafc; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+  td.num, th.num { text-align: right; }
+  .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar input[type="month"] { padding: 7px; border: 1px solid var(--border); border-radius: 8px; }
+  .progress { background: #eef2f7; border-radius: 6px; height: 8px; width: 140px; overflow: hidden; }
+  .progress div { height: 100%; border-radius: 6px; }
+  .hint { font-size: 12px; color: var(--muted); margin: 8px 0; }
+  input.cell { width: 110px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; text-align: right; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2f7; color: var(--muted); }
+  .overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; }
+  .auth-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+  .auth-card h2 { font-size: 20px; }
+  .auth-card p { font-size: 13px; color: var(--muted); }
+  .auth-card input { padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+  .auth-card .error { color: var(--red); font-size: 13px; min-height: 16px; }
+  #sync-status { font-size: 12px; color: var(--muted); }
+  @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<!-- CONFIGURACIÓN SUPABASE (primera vez en cada dispositivo) -->
+<div id="screen-config" class="overlay" style="display:none">
+  <div class="auth-card">
+    <h2>⚙️ Conectar con Supabase</h2>
+    <p>Pegá los datos de tu proyecto (Supabase → Settings → API). Esto se hace una sola vez por dispositivo.</p>
+    <input type="url" id="cfg-url" placeholder="Project URL (https://xxxx.supabase.co)">
+    <input type="text" id="cfg-key" placeholder="anon public key (eyJ...)">
+    <div class="error" id="cfg-error"></div>
+    <button onclick="guardarConfig()">Conectar</button>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="screen-login" class="overlay" style="display:none">
+  <div class="auth-card">
+    <h2>💰 Mis Finanzas</h2>
+    <p>Ingresá con tu cuenta para ver tus datos desde cualquier dispositivo.</p>
+    <input type="email" id="auth-email" placeholder="Email" autocomplete="username">
+    <input type="password" id="auth-pass" placeholder="Contraseña" autocomplete="current-password">
+    <div class="error" id="auth-error"></div>
+    <button onclick="ingresar()">Ingresar</button>
+    <button class="secondary" onclick="crearCuenta()">Crear cuenta nueva</button>
+    <p style="text-align:center"><a href="#" onclick="resetConfig();return false" style="color:var(--muted)">Cambiar proyecto de Supabase</a></p>
+  </div>
+</div>
+
+<header>
+  <h1>💰 Mis Finanzas</h1>
+  <span id="sync-status"></span>
+  <div class="rate-box">
+    <span>Dólar</span>
+    <select id="tipoDolar" onchange="cambiarTipoDolar()">
+      <option value="blue">Blue</option>
+      <option value="bolsa">MEP</option>
+      <option value="oficial">Oficial</option>
+      <option value="cripto">Cripto</option>
+    </select>
+    <input type="number" id="cotizacion" step="0.01" onchange="cotizacionManual()">
+    <button class="secondary" onclick="fetchCotizacion(true)" title="Actualizar cotización">↻</button>
+  </div>
+  <button class="secondary" onclick="exportar()">Exportar</button>
+  <button class="secondary" onclick="document.getElementById('importFile').click()">Importar</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="importar(event)">
+  <button class="secondary" onclick="salir()">Salir</button>
+</header>
+
+<nav>
+  <button id="tabbtn-resumen" class="active" onclick="verTab('resumen')">Resumen</button>
+  <button id="tabbtn-movimientos" onclick="verTab('movimientos')">Movimientos</button>
+  <button id="tabbtn-presupuesto" onclick="verTab('presupuesto')">Presupuesto</button>
+  <button id="tabbtn-inversiones" onclick="verTab('inversiones')">Inversiones</button>
+</nav>
+
+<main>
+  <!-- RESUMEN -->
+  <section id="tab-resumen" class="tab active">
+    <div class="cards">
+      <div class="card"><div class="label">Ingresos del mes (ARS)</div><div class="value green" id="r-ingresos"></div></div>
+      <div class="card"><div class="label">Gastos del mes (ARS)</div><div class="value red" id="r-gastos"></div></div>
+      <div class="card"><div class="label">Balance del mes (ARS)</div><div class="value" id="r-balance"></div></div>
+      <div class="card"><div class="label">Patrimonio (USD)</div><div class="value" id="r-patrimonio"></div></div>
+    </div>
+    <div class="charts">
+      <div class="chart-card"><h3>Gastos por categoría (mes actual)</h3><canvas id="chartCategorias"></canvas></div>
+      <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
+      <div class="chart-card wide"><h3>Ingresos vs. gastos — últimos 6 meses (ARS)</h3><canvas id="chartMensual"></canvas></div>
+    </div>
+  </section>
+
+  <!-- MOVIMIENTOS -->
+  <section id="tab-movimientos" class="tab">
+    <form class="mov-form" onsubmit="agregarMovimiento(event)">
+      <label>Fecha<input type="date" id="m-fecha" required></label>
+      <label>Tipo
+        <select id="m-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select>
+      </label>
+      <label>Descripción<input type="text" id="m-desc" required placeholder="Ej: Supermercado"></label>
+      <label>Categoría<select id="m-cat"></select></label>
+      <label>Moneda
+        <select id="m-moneda" onchange="toggleCotizacion()"><option value="ARS">ARS</option><option value="USD">USD</option></select>
+      </label>
+      <label>Monto<input type="number" id="m-monto" step="0.01" min="0.01" required></label>
+      <label id="m-cotiz-label" style="display:none">Cotización<input type="number" id="m-cotiz" step="0.01"></label>
+      <button type="submit">Agregar</button>
+    </form>
+    <div class="toolbar">
+      <label>Mes: <input type="month" id="m-mes" onchange="renderMovimientos()"></label>
+      <span class="hint">Los montos en USD se pesifican con la cotización indicada.</span>
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
+      <tbody id="m-tbody"></tbody>
+      <tfoot id="m-tfoot"></tfoot>
+    </table>
+  </section>
+
+  <!-- PRESUPUESTO -->
+  <section id="tab-presupuesto" class="tab">
+    <div class="toolbar">
+      <label>Mes: <input type="month" id="p-mes" onchange="renderPresupuesto()"></label>
+      <button class="secondary" onclick="copiarMesAnterior()">Copiar del mes anterior</button>
+      <button class="secondary" onclick="agregarCategoria()">+ Categoría</button>
+    </div>
+    <p class="hint">Si un mes no tiene presupuesto, se crea automáticamente copiando el del mes anterior.</p>
+    <table>
+      <thead><tr><th>Categoría</th><th class="num">Presupuesto (ARS)</th><th class="num">Gastado (ARS)</th><th>Avance</th><th class="num">Disponible</th><th></th></tr></thead>
+      <tbody id="p-tbody"></tbody>
+      <tfoot id="p-tfoot"></tfoot>
+    </table>
+  </section>
+
+  <!-- INVERSIONES -->
+  <section id="tab-inversiones" class="tab">
+    <form class="mov-form" onsubmit="agregarInversion(event)">
+      <label>Nombre<input type="text" id="i-nombre" required placeholder="Ej: Dólares en caja de ahorro"></label>
+      <label>Tipo
+        <select id="i-tipo">
+          <option>Efectivo USD</option><option>Caja de ahorro USD</option><option>Plazo fijo</option>
+          <option>Acciones / CEDEARs</option><option>Bonos</option><option>FCI</option><option>Cripto</option><option>Otro</option>
+        </select>
+      </label>
+      <label>Valor (USD)<input type="number" id="i-valor" step="0.01" min="0" required></label>
+      <button type="submit">Agregar</button>
+    </form>
+    <p class="hint">Todo se expresa en dólares. Actualizá el valor de cada activo cuando cambie; la evolución mensual se guarda sola.</p>
+    <table>
+      <thead><tr><th>Activo</th><th>Tipo</th><th class="num">Valor USD</th><th class="num">Equiv. ARS</th><th></th></tr></thead>
+      <tbody id="i-tbody"></tbody>
+      <tfoot id="i-tfoot"></tfoot>
+    </table>
+  </section>
+</main>
+
+<script>
+"use strict";
+const CFG_KEY = "sb_config";
+const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
+const CATS_DEFAULT = ["Alimentos", "Vivienda", "Servicios", "Transporte", "Salud", "Ocio", "Educación", "Ropa", "Otros"];
+
+let sb = null;        // cliente de Supabase
+let usuario = null;   // usuario logueado
+let data = null;      // datos de la app
+let charts = {};
+let saveTimer = null;
+
+function datosVacios() {
+  return {
+    movimientos: [], presupuestos: {}, inversiones: [], snapshots: {},
+    categorias: CATS_DEFAULT.slice(),
+    config: { tipoDolar: "blue", cotizacion: null, cotizacionFecha: null }
+  };
+}
+
+// ---------- Configuración de Supabase ----------
+function guardarConfig() {
+  const url = document.getElementById("cfg-url").value.trim();
+  const key = document.getElementById("cfg-key").value.trim();
+  if (!url.startsWith("https://") || key.length < 20) {
+    document.getElementById("cfg-error").textContent = "Revisá la URL y la clave: no parecen válidas.";
+    return;
+  }
+  localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
+  location.reload();
+}
+function resetConfig() {
+  if (confirm("¿Cambiar el proyecto de Supabase configurado en este dispositivo?")) {
+    localStorage.removeItem(CFG_KEY);
+    location.reload();
+  }
+}
+
+// ---------- Autenticación ----------
+async function ingresar() {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-pass").value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { document.getElementById("auth-error").textContent = traducirError(error.message); return; }
+  iniciarSesion();
+}
+async function crearCuenta() {
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-pass").value;
+  if (password.length < 6) { document.getElementById("auth-error").textContent = "La contraseña debe tener al menos 6 caracteres."; return; }
+  const { data: res, error } = await sb.auth.signUp({ email, password });
+  if (error) { document.getElementById("auth-error").textContent = traducirError(error.message); return; }
+  if (res.session) { iniciarSesion(); }
+  else { document.getElementById("auth-error").textContent = "Cuenta creada. Revisá tu email para confirmarla y después ingresá."; }
+}
+async function salir() {
+  await sb.auth.signOut();
+  location.reload();
+}
+function traducirError(msg) {
+  if (/invalid login/i.test(msg)) return "Email o contraseña incorrectos.";
+  if (/already registered/i.test(msg)) return "Ese email ya tiene una cuenta. Usá Ingresar.";
+  if (/rate limit/i.test(msg)) return "Demasiados intentos, esperá un momento.";
+  return msg;
+}
+
+// ---------- Carga y guardado en la nube ----------
+async function cargarNube() {
+  const { data: fila, error } = await sb.from("finanzas").select("data").maybeSingle();
+  if (error) { alert("No pude leer tus datos: " + error.message + "\n¿Creaste la tabla con el SQL indicado?"); return null; }
+  if (fila && fila.data && fila.data.movimientos) return fila.data;
+  // Sin datos en la nube: ofrecer migrar lo que haya en este navegador (versión local)
+  try {
+    const local = JSON.parse(localStorage.getItem(LOCAL_KEY) || "null");
+    if (local && local.movimientos && local.movimientos.length &&
+        confirm("Encontré datos de la versión local en este navegador (" + local.movimientos.length + " movimientos). ¿Los subo a tu cuenta?")) {
+      return local;
+    }
+  } catch (e) { /* ignorar */ }
+  return datosVacios();
+}
+function guardar() {
+  setSync("Guardando…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    const { error } = await sb.from("finanzas")
+      .upsert({ user_id: usuario.id, data: data, updated_at: new Date().toISOString() });
+    if (error) { setSync("⚠ Error al guardar", true); console.error(error); }
+    else setSync("✓ Guardado " + new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }));
+  }, 700);
+}
+function setSync(txt, esError) {
+  const el = document.getElementById("sync-status");
+  el.textContent = txt;
+  el.style.color = esError ? "var(--red)" : "var(--muted)";
+}
+
+// ---------- Utilidades ----------
+const fmtARS = n => "$ " + (n || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+const fmtUSD = n => "US$ " + (n || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const hoy = () => new Date().toISOString().slice(0, 10);
+const mesActual = () => hoy().slice(0, 7);
+function mesAnterior(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(a, m - 2, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
+function nombreMes(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  return new Date(a, m - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+
+// ---------- Cotización ----------
+async function fetchCotizacion(manual) {
+  try {
+    const res = await fetch("https://dolarapi.com/v1/dolares");
+    const list = await res.json();
+    const d = list.find(x => x.casa === data.config.tipoDolar);
+    if (d && d.venta) {
+      data.config.cotizacion = d.venta;
+      data.config.cotizacionFecha = hoy();
+      guardar();
+      renderCotizacion();
+      renderTodo();
+    }
+  } catch (e) {
+    if (manual) alert("No pude obtener la cotización (¿sin internet?). Podés cargarla a mano en el campo de arriba.");
+  }
+}
+function renderCotizacion() {
+  document.getElementById("tipoDolar").value = data.config.tipoDolar;
+  document.getElementById("cotizacion").value = data.config.cotizacion || "";
+}
+function cambiarTipoDolar() {
+  data.config.tipoDolar = document.getElementById("tipoDolar").value;
+  guardar();
+  fetchCotizacion(true);
+}
+function cotizacionManual() {
+  const v = parseFloat(document.getElementById("cotizacion").value);
+  if (v > 0) { data.config.cotizacion = v; data.config.cotizacionFecha = hoy(); guardar(); renderTodo(); }
+}
+
+// ---------- Tabs ----------
+function verTab(nombre) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + nombre).classList.add("active");
+  document.getElementById("tabbtn-" + nombre).classList.add("active");
+  if (nombre === "resumen") renderResumen();
+}
+
+// ---------- Movimientos ----------
+function toggleCotizacion() {
+  const esUSD = document.getElementById("m-moneda").value === "USD";
+  document.getElementById("m-cotiz-label").style.display = esUSD ? "flex" : "none";
+  if (esUSD) document.getElementById("m-cotiz").value = data.config.cotizacion || "";
+}
+function agregarMovimiento(ev) {
+  ev.preventDefault();
+  const moneda = document.getElementById("m-moneda").value;
+  const monto = parseFloat(document.getElementById("m-monto").value);
+  let montoARS = monto, montoUSD = null, cotiz = null;
+  if (moneda === "USD") {
+    cotiz = parseFloat(document.getElementById("m-cotiz").value);
+    if (!(cotiz > 0)) { alert("Ingresá la cotización para pesificar el monto en USD."); return; }
+    montoUSD = monto;
+    montoARS = Math.round(monto * cotiz * 100) / 100;
+  }
+  data.movimientos.push({
+    id: uid(),
+    fecha: document.getElementById("m-fecha").value,
+    tipo: document.getElementById("m-tipo").value,
+    descripcion: document.getElementById("m-desc").value.trim(),
+    categoria: document.getElementById("m-cat").value,
+    montoARS, montoUSD, cotizacion: cotiz
+  });
+  guardar();
+  ev.target.reset();
+  document.getElementById("m-fecha").value = hoy();
+  toggleCotizacion();
+  renderTodo();
+}
+function borrarMovimiento(id) {
+  if (!confirm("¿Borrar este movimiento?")) return;
+  data.movimientos = data.movimientos.filter(m => m.id !== id);
+  guardar();
+  renderTodo();
+}
+function movsDelMes(mes) { return data.movimientos.filter(m => m.fecha.slice(0, 7) === mes); }
+
+function renderMovimientos() {
+  const mes = document.getElementById("m-mes").value || mesActual();
+  const movs = movsDelMes(mes).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const tbody = document.getElementById("m-tbody");
+  tbody.innerHTML = movs.map(m => `
+    <tr>
+      <td>${m.fecha.split("-").reverse().join("/")}</td>
+      <td>${esc(m.descripcion)}</td>
+      <td><span class="badge">${esc(m.categoria)}</span></td>
+      <td class="${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "Ingreso" : "Gasto"}</td>
+      <td class="num ${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "+" : "−"}${fmtARS(m.montoARS)}</td>
+      <td class="num">${m.montoUSD ? fmtUSD(m.montoUSD) + " @ " + m.cotizacion : "—"}</td>
+      <td><button class="danger" onclick="borrarMovimiento('${m.id}')">×</button></td>
+    </tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
+  const ing = movs.filter(m => m.tipo === "ingreso").reduce((s, m) => s + m.montoARS, 0);
+  const gas = movs.filter(m => m.tipo === "gasto").reduce((s, m) => s + m.montoARS, 0);
+  document.getElementById("m-tfoot").innerHTML = `
+    <tr><th colspan="4">Totales de ${nombreMes(mes)}</th>
+    <th class="num"><span class="green">+${fmtARS(ing)}</span> / <span class="red">−${fmtARS(gas)}</span></th>
+    <th class="num" colspan="2">Balance: ${fmtARS(ing - gas)}</th></tr>`;
+}
+
+// ---------- Presupuesto ----------
+function obtenerPresupuesto(mes) {
+  if (data.presupuestos[mes]) return data.presupuestos[mes];
+  let cursor = mes;
+  for (let i = 0; i < 24; i++) {
+    cursor = mesAnterior(cursor);
+    if (data.presupuestos[cursor]) {
+      data.presupuestos[mes] = Object.assign({}, data.presupuestos[cursor]);
+      guardar();
+      return data.presupuestos[mes];
+    }
+  }
+  data.presupuestos[mes] = {};
+  data.categorias.forEach(c => data.presupuestos[mes][c] = 0);
+  guardar();
+  return data.presupuestos[mes];
+}
+function copiarMesAnterior() {
+  const mes = document.getElementById("p-mes").value || mesActual();
+  const ant = mesAnterior(mes);
+  if (!data.presupuestos[ant]) { alert("No hay presupuesto cargado en " + nombreMes(ant) + "."); return; }
+  data.presupuestos[mes] = Object.assign({}, data.presupuestos[ant]);
+  guardar();
+  renderPresupuesto();
+}
+function setPresupuesto(mes, cat, valor) {
+  obtenerPresupuesto(mes)[cat] = parseFloat(valor) || 0;
+  guardar();
+  renderPresupuesto();
+}
+function agregarCategoria() {
+  const nombre = prompt("Nombre de la nueva categoría:");
+  if (!nombre || !nombre.trim()) return;
+  const n = nombre.trim();
+  if (data.categorias.includes(n)) { alert("Esa categoría ya existe."); return; }
+  data.categorias.push(n);
+  guardar();
+  renderCategorias();
+  renderPresupuesto();
+}
+function borrarCategoria(cat) {
+  if (!confirm(`¿Quitar la categoría "${cat}" del presupuesto? Los movimientos ya cargados no se borran.`)) return;
+  data.categorias = data.categorias.filter(c => c !== cat);
+  Object.values(data.presupuestos).forEach(p => delete p[cat]);
+  guardar();
+  renderCategorias();
+  renderPresupuesto();
+}
+function renderPresupuesto() {
+  const mes = document.getElementById("p-mes").value || mesActual();
+  const pres = obtenerPresupuesto(mes);
+  const movs = movsDelMes(mes).filter(m => m.tipo === "gasto");
+  const gastado = {};
+  movs.forEach(m => gastado[m.categoria] = (gastado[m.categoria] || 0) + m.montoARS);
+  const cats = [...new Set([...data.categorias, ...Object.keys(gastado)])];
+  let totP = 0, totG = 0;
+  document.getElementById("p-tbody").innerHTML = cats.map(cat => {
+    const p = pres[cat] || 0, g = gastado[cat] || 0;
+    totP += p; totG += g;
+    const pct = p > 0 ? Math.min(100, g / p * 100) : (g > 0 ? 100 : 0);
+    const color = p === 0 && g === 0 ? "var(--border)" : pct < 75 ? "var(--green)" : pct < 100 ? "var(--amber)" : "var(--red)";
+    return `<tr>
+      <td>${esc(cat)}</td>
+      <td class="num"><input class="cell" type="number" step="100" value="${p}" onchange="setPresupuesto('${mes}','${esc(cat)}',this.value)"></td>
+      <td class="num">${fmtARS(g)}</td>
+      <td><div class="progress"><div style="width:${pct}%;background:${color}"></div></div></td>
+      <td class="num ${p - g < 0 ? "red" : ""}">${fmtARS(p - g)}</td>
+      <td><button class="danger" title="Quitar categoría" onclick="borrarCategoria('${esc(cat)}')">×</button></td>
+    </tr>`;
+  }).join("");
+  document.getElementById("p-tfoot").innerHTML = `
+    <tr><th>Total</th><th class="num">${fmtARS(totP)}</th><th class="num">${fmtARS(totG)}</th><th></th>
+    <th class="num ${totP - totG < 0 ? "red" : ""}">${fmtARS(totP - totG)}</th><th></th></tr>`;
+}
+
+// ---------- Inversiones ----------
+function agregarInversion(ev) {
+  ev.preventDefault();
+  data.inversiones.push({
+    id: uid(),
+    nombre: document.getElementById("i-nombre").value.trim(),
+    tipo: document.getElementById("i-tipo").value,
+    valorUSD: parseFloat(document.getElementById("i-valor").value) || 0
+  });
+  snapshotPatrimonio();
+  ev.target.reset();
+  renderTodo();
+}
+function setValorInversion(id, valor) {
+  const inv = data.inversiones.find(i => i.id === id);
+  if (inv) { inv.valorUSD = parseFloat(valor) || 0; snapshotPatrimonio(); renderTodo(); }
+}
+function borrarInversion(id) {
+  if (!confirm("¿Borrar este activo?")) return;
+  data.inversiones = data.inversiones.filter(i => i.id !== id);
+  snapshotPatrimonio();
+  renderTodo();
+}
+function totalPatrimonio() { return data.inversiones.reduce((s, i) => s + i.valorUSD, 0); }
+function snapshotPatrimonio() {
+  data.snapshots[mesActual()] = Math.round(totalPatrimonio() * 100) / 100;
+  guardar();
+}
+function renderInversiones() {
+  const cot = data.config.cotizacion;
+  document.getElementById("i-tbody").innerHTML = data.inversiones.map(i => `
+    <tr>
+      <td>${esc(i.nombre)}</td>
+      <td><span class="badge">${esc(i.tipo)}</span></td>
+      <td class="num"><input class="cell" type="number" step="0.01" value="${i.valorUSD}" onchange="setValorInversion('${i.id}',this.value)"></td>
+      <td class="num">${cot ? fmtARS(i.valorUSD * cot) : "—"}</td>
+      <td><button class="danger" onclick="borrarInversion('${i.id}')">×</button></td>
+    </tr>`).join("") || `<tr><td colspan="5" style="color:var(--muted)">Todavía no cargaste activos.</td></tr>`;
+  const tot = totalPatrimonio();
+  document.getElementById("i-tfoot").innerHTML = `
+    <tr><th colspan="2">Total</th><th class="num">${fmtUSD(tot)}</th>
+    <th class="num">${cot ? fmtARS(tot * cot) : "—"}</th><th></th></tr>`;
+}
+
+// ---------- Resumen y gráficos ----------
+function renderResumen() {
+  const mes = mesActual();
+  const movs = movsDelMes(mes);
+  const ing = movs.filter(m => m.tipo === "ingreso").reduce((s, m) => s + m.montoARS, 0);
+  const gas = movs.filter(m => m.tipo === "gasto").reduce((s, m) => s + m.montoARS, 0);
+  document.getElementById("r-ingresos").textContent = fmtARS(ing);
+  document.getElementById("r-gastos").textContent = fmtARS(gas);
+  const bal = document.getElementById("r-balance");
+  bal.textContent = fmtARS(ing - gas);
+  bal.className = "value " + (ing - gas >= 0 ? "green" : "red");
+  document.getElementById("r-patrimonio").textContent = fmtUSD(totalPatrimonio());
+  if (typeof Chart === "undefined") return;
+
+  const porCat = {};
+  movs.filter(m => m.tipo === "gasto").forEach(m => porCat[m.categoria] = (porCat[m.categoria] || 0) + m.montoARS);
+  dibujar("chartCategorias", {
+    type: "doughnut",
+    data: { labels: Object.keys(porCat), datasets: [{ data: Object.values(porCat),
+      backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#64748b","#ea580c"] }] },
+    options: { plugins: { legend: { position: "right" } } }
+  });
+
+  const meses = Object.keys(data.snapshots).sort();
+  dibujar("chartPatrimonio", {
+    type: "line",
+    data: { labels: meses, datasets: [{ label: "USD", data: meses.map(m => data.snapshots[m]),
+      borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.1)", fill: true, tension: .3 }] },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+  const labels = [];
+  let cursor = mes;
+  for (let i = 0; i < 6; i++) { labels.unshift(cursor); cursor = mesAnterior(cursor); }
+  const ingSerie = labels.map(m => movsDelMes(m).filter(x => x.tipo === "ingreso").reduce((s, x) => s + x.montoARS, 0));
+  const gasSerie = labels.map(m => movsDelMes(m).filter(x => x.tipo === "gasto").reduce((s, x) => s + x.montoARS, 0));
+  dibujar("chartMensual", {
+    type: "bar",
+    data: { labels: labels.map(nombreMes), datasets: [
+      { label: "Ingresos", data: ingSerie, backgroundColor: "#16a34a" },
+      { label: "Gastos", data: gasSerie, backgroundColor: "#dc2626" }] },
+    options: { scales: { y: { beginAtZero: true } } }
+  });
+}
+function dibujar(id, config) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(document.getElementById(id), config);
+}
+
+// ---------- Categorías en selects ----------
+function renderCategorias() {
+  document.getElementById("m-cat").innerHTML = data.categorias.map(c => `<option>${esc(c)}</option>`).join("");
+}
+
+// ---------- Export / Import ----------
+function exportar() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "mis-finanzas-" + hoy() + ".json";
+  a.click();
+}
+function importar(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const d = JSON.parse(reader.result);
+      if (!d.movimientos || !d.config) throw new Error("formato inválido");
+      data = d;
+      guardar();
+      renderCotizacion();
+      renderTodo();
+      alert("Datos importados correctamente.");
+    } catch (e) { alert("El archivo no es un backup válido de esta app."); }
+  };
+  reader.readAsText(file);
+  ev.target.value = "";
+}
+
+// ---------- Init ----------
+function renderTodo() {
+  renderMovimientos();
+  renderPresupuesto();
+  renderInversiones();
+  renderResumen();
+}
+async function iniciarSesion() {
+  const { data: s } = await sb.auth.getSession();
+  if (!s.session) return;
+  usuario = s.session.user;
+  data = await cargarNube();
+  if (!data) return;
+  document.getElementById("screen-login").style.display = "none";
+  document.getElementById("m-fecha").value = hoy();
+  document.getElementById("m-mes").value = mesActual();
+  document.getElementById("p-mes").value = mesActual();
+  renderCategorias();
+  renderCotizacion();
+  renderTodo();
+  guardar(); // asegura que exista la fila (y sube la migración si la hubo)
+  fetchCotizacion(false);
+}
+(function init() {
+  const cfg = JSON.parse(localStorage.getItem(CFG_KEY) || "null");
+  if (!cfg) { document.getElementById("screen-config").style.display = "flex"; return; }
+  sb = window.supabase.createClient(cfg.url, cfg.key);
+  document.getElementById("screen-login").style.display = "flex";
+  iniciarSesion();
+})();
+</script>
+</body>
+</html>
