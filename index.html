@@ -63,7 +63,7 @@
 </head>
 <body>
 
-<!-- CONFIGURACIÓN SUPABASE (primera vez en cada dispositivo) -->
+<!-- CONFIGURACIÓN SUPABASE (solo aparece si no hay credenciales en el código) -->
 <div id="screen-config" class="overlay" style="display:none">
   <div class="auth-card">
     <h2>⚙️ Conectar con Supabase</h2>
@@ -85,7 +85,6 @@
     <div class="error" id="auth-error"></div>
     <button onclick="ingresar()">Ingresar</button>
     <button class="secondary" onclick="crearCuenta()">Crear cuenta nueva</button>
-    <p style="text-align:center"><a href="#" onclick="resetConfig();return false" style="color:var(--muted)">Cambiar proyecto de Supabase</a></p>
   </div>
 </div>
 
@@ -198,6 +197,9 @@
 
 <script>
 "use strict";
+// Credenciales del proyecto (la anon key es pública por diseño; los datos los protege RLS)
+const SB_URL = "https://znzazmiteeermlqonwkw.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuemF6bWl0ZWVlcm1scW9ud2t3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NDg4MzIsImV4cCI6MjA5OTUyNDgzMn0.m7H0PXg096YTDCUv5RfcnR8o0cRTqV9CVIUVJHAcifY";
 const CFG_KEY = "sb_config";
 const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
 const CATS_DEFAULT = ["Alimentos", "Vivienda", "Servicios", "Transporte", "Salud", "Ocio", "Educación", "Ropa", "Otros"];
@@ -226,12 +228,6 @@ function guardarConfig() {
   }
   localStorage.setItem(CFG_KEY, JSON.stringify({ url, key }));
   location.reload();
-}
-function resetConfig() {
-  if (confirm("¿Cambiar el proyecto de Supabase configurado en este dispositivo?")) {
-    localStorage.removeItem(CFG_KEY);
-    location.reload();
-  }
 }
 
 // ---------- Autenticación ----------
@@ -635,7 +631,9 @@ async function iniciarSesion() {
   fetchCotizacion(false);
 }
 (function init() {
-  const cfg = JSON.parse(localStorage.getItem(CFG_KEY) || "null");
+  const cfg = (SB_URL && SB_KEY)
+    ? { url: SB_URL, key: SB_KEY }
+    : JSON.parse(localStorage.getItem(CFG_KEY) || "null");
   if (!cfg) { document.getElementById("screen-config").style.display = "flex"; return; }
   sb = window.supabase.createClient(cfg.url, cfg.key);
   document.getElementById("screen-login").style.display = "flex";
