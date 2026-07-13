@@ -36,8 +36,12 @@
   .green { color: var(--green); } .red { color: var(--red); } .amber { color: var(--amber); }
   .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
-  .chart-card h3 { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  .chart-card h3 { font-size: 14px; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .chart-card h3 select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; color: var(--text); }
   .chart-card.wide { grid-column: 1 / -1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .chips label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; user-select: none; }
+  .chips input { accent-color: var(--primary); cursor: pointer; }
   form.mov-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
   form.mov-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
   form.mov-form input, form.mov-form select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
@@ -53,6 +57,7 @@
   input.cell { width: 110px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; text-align: right; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2f7; color: var(--muted); }
   .badge.cat { background: #e0e9ff; color: #1d4ed8; }
+  .badge.clase { background: #fef3c7; color: #92400e; }
   .overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; }
   .auth-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
   .auth-card h2 { font-size: 20px; }
@@ -127,7 +132,17 @@
       <div class="card"><div class="label">Patrimonio (USD)</div><div class="value" id="r-patrimonio"></div></div>
     </div>
     <div class="charts">
-      <div class="chart-card"><h3>Gastos por subcategoría (mes actual)</h3><canvas id="chartCategorias"></canvas></div>
+      <div class="chart-card">
+        <h3>Gastos del mes por
+          <select id="g-dim" onchange="cambiarDim(this.value)">
+            <option value="subcategoria">Subcategoría</option>
+            <option value="categoria">Categoría</option>
+            <option value="clase">Clase</option>
+          </select>
+        </h3>
+        <div class="chips" id="g-filtros"></div>
+        <canvas id="chartCategorias"></canvas>
+      </div>
       <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
       <div class="chart-card wide"><h3>Ingresos vs. gastos — últimos 6 meses (ARS)</h3><canvas id="chartMensual"></canvas></div>
     </div>
@@ -142,6 +157,9 @@
       </label>
       <label>Descripción<input type="text" id="m-desc" required placeholder="Ej: Supermercado"></label>
       <label>Categoría<select id="m-categoria"></select></label>
+      <label id="m-clase-label">Clase
+        <select id="m-clase"><option>Necesario</option><option>Discrecional</option></select>
+      </label>
       <label>Subcategoría<select id="m-subcat"></select></label>
       <label>Moneda
         <select id="m-moneda" onchange="toggleCotizacion()"><option value="ARS">ARS</option><option value="USD">USD</option></select>
@@ -156,7 +174,7 @@
       <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento.</span>
     </div>
     <table>
-      <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Clase</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
       <tbody id="m-tbody"></tbody>
       <tfoot id="m-tfoot"></tfoot>
     </table>
@@ -212,15 +230,18 @@ const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
 
 const CATS_GASTO = ["Fijo", "Variable", "Vacaciones"];
 const CATS_INGRESO = ["Fijo", "Variable"];
-const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Supermercado", "Transporte", "Vivienda"];
+const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Donación", "Educación", "Electrónica", "Gimnasio", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Supermercado", "Transporte", "Vivienda"];
 const SUBCATS_INGRESO_DEFAULT = ["Alquiler", "Bono", "Comisiones", "Sueldo"];
+const SUBCATS_NUEVAS = ["Impuestos", "Supermercado", "Donación", "Gimnasio"];
 
 let sb = null;        // cliente de Supabase
 let usuario = null;   // usuario logueado
 let data = null;      // datos de la app
 let charts = {};
 let saveTimer = null;
-let editandoId = null; // id del movimiento en edición
+let editandoId = null;            // id del movimiento en edición
+let dimGastos = "subcategoria";   // dimensión del gráfico de gastos
+let excluidos = new Set();        // valores excluidos del gráfico
 
 const ordenar = arr => arr.sort((a, b) => a.localeCompare(b, "es"));
 
@@ -233,7 +254,7 @@ function datosVacios() {
   };
 }
 
-// Adapta datos de versiones anteriores (categoría única -> categoría + subcategoría)
+// Adapta datos de versiones anteriores
 function migrar(d) {
   if (!d.subcatsGasto) {
     const base = new Set(SUBCATS_GASTO_DEFAULT);
@@ -243,7 +264,7 @@ function migrar(d) {
   }
   if (!d.subcatsIngreso) d.subcatsIngreso = SUBCATS_INGRESO_DEFAULT.slice();
   // Asegura que las subcategorías nuevas aparezcan aunque los datos guardados sean anteriores
-  ["Impuestos", "Supermercado"].forEach(s => {
+  SUBCATS_NUEVAS.forEach(s => {
     if (!d.subcatsGasto.includes(s)) { d.subcatsGasto.push(s); ordenar(d.subcatsGasto); }
   });
   (d.movimientos || []).forEach(m => {
@@ -251,6 +272,7 @@ function migrar(d) {
       m.subcategoria = m.categoria || "Otros";
       m.categoria = "Variable";
     }
+    if (m.tipo === "gasto" && !m.clase) m.clase = "Necesario";
   });
   return d;
 }
@@ -300,7 +322,6 @@ async function cargarNube() {
   const { data: fila, error } = await sb.from("finanzas").select("data").maybeSingle();
   if (error) { alert("No pude leer tus datos: " + error.message + "\n¿Creaste la tabla con el SQL indicado?"); return null; }
   if (fila && fila.data && fila.data.movimientos) return fila.data;
-  // Sin datos en la nube: ofrecer migrar lo que haya en este navegador (versión local)
   try {
     const local = JSON.parse(localStorage.getItem(LOCAL_KEY) || "null");
     if (local && local.movimientos && local.movimientos.length &&
@@ -390,6 +411,7 @@ function actualizarListas() {
   const subs = esGasto ? data.subcatsGasto : data.subcatsIngreso;
   document.getElementById("m-categoria").innerHTML = cats.map(c => `<option>${esc(c)}</option>`).join("");
   document.getElementById("m-subcat").innerHTML = ordenar(subs.slice()).map(c => `<option>${esc(c)}</option>`).join("");
+  document.getElementById("m-clase-label").style.display = esGasto ? "flex" : "none";
 }
 function toggleCotizacion() {
   const esUSD = document.getElementById("m-moneda").value === "USD";
@@ -400,6 +422,7 @@ function toggleCotizacion() {
 }
 function agregarMovimiento(ev) {
   ev.preventDefault();
+  const tipo = document.getElementById("m-tipo").value;
   const moneda = document.getElementById("m-moneda").value;
   const monto = parseFloat(document.getElementById("m-monto").value);
   let montoARS = monto, montoUSD = null, cotiz = null;
@@ -412,9 +435,10 @@ function agregarMovimiento(ev) {
   const mov = {
     id: editandoId || uid(),
     fecha: document.getElementById("m-fecha").value,
-    tipo: document.getElementById("m-tipo").value,
+    tipo,
     descripcion: document.getElementById("m-desc").value.trim(),
     categoria: document.getElementById("m-categoria").value,
+    clase: tipo === "gasto" ? document.getElementById("m-clase").value : null,
     subcategoria: document.getElementById("m-subcat").value,
     montoARS, montoUSD, cotizacion: cotiz
   };
@@ -438,6 +462,7 @@ function editarMovimiento(id) {
   document.getElementById("m-desc").value = m.descripcion;
   seleccionar("m-categoria", m.categoria);
   seleccionar("m-subcat", m.subcategoria);
+  if (m.tipo === "gasto") document.getElementById("m-clase").value = m.clase || "Necesario";
   document.getElementById("m-moneda").value = m.montoUSD ? "USD" : "ARS";
   document.getElementById("m-cotiz").value = m.montoUSD ? (m.cotizacion || "") : "";
   toggleCotizacion();
@@ -447,7 +472,7 @@ function editarMovimiento(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   document.getElementById("m-desc").focus();
 }
-// Selecciona un valor en un <select>; si no existe la opción (subcategoría vieja), la agrega
+// Selecciona un valor en un <select>; si no existe la opción (valor viejo), la agrega
 function seleccionar(idSelect, valor) {
   const sel = document.getElementById(idSelect);
   sel.value = valor;
@@ -479,13 +504,14 @@ function movsDelMes(mes) { return data.movimientos.filter(m => m.fecha.slice(0, 
 
 function renderMovimientos() {
   const mes = document.getElementById("m-mes").value || mesActual();
-  const movs = movsDelMes(mes).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const movs = movsDelMes(mes).sort((a, b) => (a.descripcion || "").localeCompare(b.descripcion || "", "es"));
   const tbody = document.getElementById("m-tbody");
   tbody.innerHTML = movs.map(m => `
     <tr>
       <td>${m.fecha.split("-").reverse().join("/")}</td>
       <td>${esc(m.descripcion)}</td>
       <td><span class="badge cat">${esc(m.categoria)}</span></td>
+      <td>${m.tipo === "gasto" ? `<span class="badge clase">${esc(m.clase || "Necesario")}</span>` : "—"}</td>
       <td><span class="badge">${esc(m.subcategoria)}</span></td>
       <td class="${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "Ingreso" : "Gasto"}</td>
       <td class="num ${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "+" : "−"}${fmtARS(m.montoARS)}</td>
@@ -494,11 +520,11 @@ function renderMovimientos() {
         <button class="edit" title="Editar" onclick="editarMovimiento('${m.id}')">✎</button>
         <button class="danger" title="Borrar" onclick="borrarMovimiento('${m.id}')">×</button>
       </td>
-    </tr>`).join("") || `<tr><td colspan="8" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="9" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
   const ing = movs.filter(m => m.tipo === "ingreso").reduce((s, m) => s + m.montoARS, 0);
   const gas = movs.filter(m => m.tipo === "gasto").reduce((s, m) => s + m.montoARS, 0);
   document.getElementById("m-tfoot").innerHTML = `
-    <tr><th colspan="5">Totales de ${nombreMes(mes)}</th>
+    <tr><th colspan="6">Totales de ${nombreMes(mes)}</th>
     <th class="num"><span class="green">+${fmtARS(ing)}</span> / <span class="red">−${fmtARS(gas)}</span></th>
     <th class="num" colspan="2">Balance: ${fmtARS(ing - gas)}</th></tr>`;
 }
@@ -624,6 +650,16 @@ function renderInversiones() {
 }
 
 // ---------- Resumen y gráficos ----------
+function cambiarDim(v) {
+  dimGastos = v;
+  excluidos = new Set();
+  renderResumen();
+}
+function toggleExcluir(valorCodificado) {
+  const v = decodeURIComponent(valorCodificado);
+  if (excluidos.has(v)) excluidos.delete(v); else excluidos.add(v);
+  renderResumen();
+}
 function renderResumen() {
   const mes = mesActual();
   const movs = movsDelMes(mes);
@@ -635,15 +671,33 @@ function renderResumen() {
   bal.textContent = fmtARS(ing - gas);
   bal.className = "value " + (ing - gas >= 0 ? "green" : "red");
   document.getElementById("r-patrimonio").textContent = fmtUSD(totalPatrimonio());
-  if (typeof Chart === "undefined") return;
 
-  const porCat = {};
-  movs.filter(m => m.tipo === "gasto").forEach(m => porCat[m.subcategoria] = (porCat[m.subcategoria] || 0) + m.montoARS);
+  // Torta de gastos con dimensión seleccionable, filtros y %
+  const grupos = {};
+  movs.filter(m => m.tipo === "gasto").forEach(m => {
+    const k = (dimGastos === "clase" ? (m.clase || "Necesario") : m[dimGastos]) || "Sin dato";
+    grupos[k] = (grupos[k] || 0) + m.montoARS;
+  });
+  const claves = Object.keys(grupos).sort((a, b) => grupos[b] - grupos[a]);
+  document.getElementById("g-filtros").innerHTML = claves.map(k =>
+    `<label><input type="checkbox" ${excluidos.has(k) ? "" : "checked"} onchange="toggleExcluir('${encodeURIComponent(k)}')">${esc(k)}</label>`
+  ).join("");
+  const visibles = claves.filter(k => !excluidos.has(k));
+  const totalVisible = visibles.reduce((s, k) => s + grupos[k], 0);
+  const pctDe = v => totalVisible ? (v / totalVisible * 100) : 0;
+
+  if (typeof Chart === "undefined") return;
   dibujar("chartCategorias", {
     type: "doughnut",
-    data: { labels: Object.keys(porCat), datasets: [{ data: Object.values(porCat),
-      backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#64748b","#ea580c","#0d9488","#a21caf","#ca8a04","#4f46e5"] }] },
-    options: { plugins: { legend: { position: "right" } } }
+    data: {
+      labels: visibles.map(k => `${k} · ${pctDe(grupos[k]).toFixed(1)}%`),
+      datasets: [{ data: visibles.map(k => grupos[k]),
+        backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#64748b","#ea580c","#0d9488","#a21caf","#ca8a04","#4f46e5","#be123c","#155e75","#4d7c0f","#9333ea"] }]
+    },
+    options: { plugins: {
+      legend: { position: "right" },
+      tooltip: { callbacks: { label: ctx => " " + fmtARS(ctx.parsed) + " · " + pctDe(ctx.parsed).toFixed(1) + "% del total" } }
+    } }
   });
 
   const meses = Object.keys(data.snapshots).sort();
