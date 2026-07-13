@@ -712,13 +712,17 @@ function renderResumen() {
   let cursor = mes;
   for (let i = 0; i < 6; i++) { labels.unshift(cursor); cursor = mesAnterior(cursor); }
   const ingSerie = labels.map(m => movsDelMes(m).filter(x => x.tipo === "ingreso").reduce((s, x) => s + x.montoARS, 0));
-  const gasSerie = labels.map(m => movsDelMes(m).filter(x => x.tipo === "gasto").reduce((s, x) => s + x.montoARS, 0));
+  const serieGasto = cat => labels.map(m => movsDelMes(m)
+    .filter(x => x.tipo === "gasto" && x.categoria === cat)
+    .reduce((s, x) => s + x.montoARS, 0));
   dibujar("chartMensual", {
     type: "bar",
     data: { labels: labels.map(nombreMes), datasets: [
-      { label: "Ingresos", data: ingSerie, backgroundColor: "#16a34a" },
-      { label: "Gastos", data: gasSerie, backgroundColor: "#dc2626" }] },
-    options: { scales: { y: { beginAtZero: true } } }
+      { label: "Ingresos", data: ingSerie, backgroundColor: "#16a34a", stack: "ingresos" },
+      { label: "Gastos fijos", data: serieGasto("Fijo"), backgroundColor: "#991b1b", stack: "gastos" },
+      { label: "Gastos variables", data: serieGasto("Variable"), backgroundColor: "#ef4444", stack: "gastos" },
+      { label: "Vacaciones", data: serieGasto("Vacaciones"), backgroundColor: "#f97316", stack: "gastos" }] },
+    options: { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
   });
 }
 function dibujar(id, config) {
