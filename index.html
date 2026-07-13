@@ -144,6 +144,8 @@
         <canvas id="chartCategorias"></canvas>
       </div>
       <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
+      <div class="chart-card"><h3>Composición del patrimonio (USD)</h3><canvas id="chartComposicion"></canvas></div>
+      <div class="chart-card"><h3>Tasa de ahorro mensual (% de los ingresos)</h3><canvas id="chartAhorro"></canvas></div>
       <div class="chart-card wide"><h3>Ingresos vs. gastos — últimos 6 meses (ARS)</h3><canvas id="chartMensual"></canvas></div>
     </div>
   </section>
@@ -708,6 +710,24 @@ function renderResumen() {
     options: { plugins: { legend: { display: false } } }
   });
 
+  // Composición del patrimonio por tipo de activo
+  const porTipo = {};
+  data.inversiones.forEach(i => porTipo[i.tipo] = (porTipo[i.tipo] || 0) + i.valorUSD);
+  const tipos = Object.keys(porTipo).sort((a, b) => porTipo[b] - porTipo[a]);
+  const totInv = tipos.reduce((s, t) => s + porTipo[t], 0);
+  dibujar("chartComposicion", {
+    type: "doughnut",
+    data: {
+      labels: tipos.map(t => `${t} · ${totInv ? (porTipo[t] / totInv * 100).toFixed(1) : 0}%`),
+      datasets: [{ data: tipos.map(t => porTipo[t]),
+        backgroundColor: ["#2563eb","#0891b2","#16a34a","#d97706","#7c3aed","#64748b"] }]
+    },
+    options: { plugins: {
+      legend: { position: "right" },
+      tooltip: { callbacks: { label: ctx => " " + fmtUSD(ctx.parsed) + (totInv ? " · " + (ctx.parsed / totInv * 100).toFixed(1) + "%" : "") } }
+    } }
+  });
+
   const labels = [];
   let cursor = mes;
   for (let i = 0; i < 6; i++) { labels.unshift(cursor); cursor = mesAnterior(cursor); }
@@ -723,6 +743,19 @@ function renderResumen() {
       { label: "Gastos variables", data: serieGasto("Variable"), backgroundColor: "#ef4444", stack: "gastos" },
       { label: "Vacaciones", data: serieGasto("Vacaciones"), backgroundColor: "#f97316", stack: "gastos" }] },
     options: { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } }
+  });
+
+  // Tasa de ahorro mensual: (ingresos - gastos) / ingresos
+  const gasTot = labels.map(m => movsDelMes(m).filter(x => x.tipo === "gasto").reduce((s, x) => s + x.montoARS, 0));
+  const ahorroSerie = labels.map((m, i) => ingSerie[i] > 0 ? +((ingSerie[i] - gasTot[i]) / ingSerie[i] * 100).toFixed(1) : null);
+  dibujar("chartAhorro", {
+    type: "line",
+    data: { labels: labels.map(nombreMes), datasets: [{ label: "% ahorro", data: ahorroSerie,
+      borderColor: "#16a34a", backgroundColor: "rgba(22,163,74,.1)", fill: true, tension: .3, spanGaps: true }] },
+    options: { plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => " " + ctx.parsed.y + "% de los ingresos" } }
+    }, scales: { y: { ticks: { callback: v => v + "%" } } } }
   });
 }
 function dibujar(id, config) {
