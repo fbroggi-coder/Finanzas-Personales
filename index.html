@@ -51,6 +51,7 @@
   .hint { font-size: 12px; color: var(--muted); margin: 8px 0; }
   input.cell { width: 110px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; text-align: right; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2f7; color: var(--muted); }
+  .badge.cat { background: #e0e9ff; color: #1d4ed8; }
   .overlay { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 10; }
   .auth-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
   .auth-card h2 { font-size: 20px; }
@@ -125,7 +126,7 @@
       <div class="card"><div class="label">Patrimonio (USD)</div><div class="value" id="r-patrimonio"></div></div>
     </div>
     <div class="charts">
-      <div class="chart-card"><h3>Gastos por categoría (mes actual)</h3><canvas id="chartCategorias"></canvas></div>
+      <div class="chart-card"><h3>Gastos por subcategoría (mes actual)</h3><canvas id="chartCategorias"></canvas></div>
       <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
       <div class="chart-card wide"><h3>Ingresos vs. gastos — últimos 6 meses (ARS)</h3><canvas id="chartMensual"></canvas></div>
     </div>
@@ -136,10 +137,11 @@
     <form class="mov-form" onsubmit="agregarMovimiento(event)">
       <label>Fecha<input type="date" id="m-fecha" required></label>
       <label>Tipo
-        <select id="m-tipo"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select>
+        <select id="m-tipo" onchange="actualizarListas()"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select>
       </label>
       <label>Descripción<input type="text" id="m-desc" required placeholder="Ej: Supermercado"></label>
-      <label>Categoría<select id="m-cat"></select></label>
+      <label>Categoría<select id="m-categoria"></select></label>
+      <label>Subcategoría<select id="m-subcat"></select></label>
       <label>Moneda
         <select id="m-moneda" onchange="toggleCotizacion()"><option value="ARS">ARS</option><option value="USD">USD</option></select>
       </label>
@@ -152,7 +154,7 @@
       <span class="hint">Los montos en USD se pesifican con la cotización indicada.</span>
     </div>
     <table>
-      <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
       <tbody id="m-tbody"></tbody>
       <tfoot id="m-tfoot"></tfoot>
     </table>
@@ -163,11 +165,11 @@
     <div class="toolbar">
       <label>Mes: <input type="month" id="p-mes" onchange="renderPresupuesto()"></label>
       <button class="secondary" onclick="copiarMesAnterior()">Copiar del mes anterior</button>
-      <button class="secondary" onclick="agregarCategoria()">+ Categoría</button>
+      <button class="secondary" onclick="agregarSubcategoria()">+ Subcategoría</button>
     </div>
-    <p class="hint">Si un mes no tiene presupuesto, se crea automáticamente copiando el del mes anterior.</p>
+    <p class="hint">Presupuesto de gastos por subcategoría. Si un mes no tiene presupuesto, se crea automáticamente copiando el del mes anterior.</p>
     <table>
-      <thead><tr><th>Categoría</th><th class="num">Presupuesto (ARS)</th><th class="num">Gastado (ARS)</th><th>Avance</th><th class="num">Disponible</th><th></th></tr></thead>
+      <thead><tr><th>Subcategoría</th><th class="num">Presupuesto (ARS)</th><th class="num">Gastado (ARS)</th><th>Avance</th><th class="num">Disponible</th><th></th></tr></thead>
       <tbody id="p-tbody"></tbody>
       <tfoot id="p-tfoot"></tfoot>
     </table>
@@ -176,11 +178,14 @@
   <!-- INVERSIONES -->
   <section id="tab-inversiones" class="tab">
     <form class="mov-form" onsubmit="agregarInversion(event)">
-      <label>Nombre<input type="text" id="i-nombre" required placeholder="Ej: Dólares en caja de ahorro"></label>
+      <label>Nombre<input type="text" id="i-nombre" required placeholder="Ej: Comitente Banco X"></label>
       <label>Tipo
         <select id="i-tipo">
-          <option>Efectivo USD</option><option>Caja de ahorro USD</option><option>Plazo fijo</option>
-          <option>Acciones / CEDEARs</option><option>Bonos</option><option>FCI</option><option>Cripto</option><option>Otro</option>
+          <option>Autos</option>
+          <option>Cuenta Afuera</option>
+          <option>Cuenta Bancaria</option>
+          <option>Cuenta Comitente</option>
+          <option>Inmuebles</option>
         </select>
       </label>
       <label>Valor (USD)<input type="number" id="i-valor" step="0.01" min="0" required></label>
@@ -202,7 +207,11 @@ const SB_URL = "https://znzazmiteeermlqonwkw.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpuemF6bWl0ZWVlcm1scW9ud2t3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NDg4MzIsImV4cCI6MjA5OTUyNDgzMn0.m7H0PXg096YTDCUv5RfcnR8o0cRTqV9CVIUVJHAcifY";
 const CFG_KEY = "sb_config";
 const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
-const CATS_DEFAULT = ["Alimentos", "Vivienda", "Servicios", "Transporte", "Salud", "Ocio", "Educación", "Ropa", "Otros"];
+
+const CATS_GASTO = ["Fijo", "Variable", "Vacaciones"];
+const CATS_INGRESO = ["Fijo", "Variable"];
+const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Transporte", "Vivienda"];
+const SUBCATS_INGRESO_DEFAULT = ["Alquiler", "Bono", "Comisiones", "Sueldo"];
 
 let sb = null;        // cliente de Supabase
 let usuario = null;   // usuario logueado
@@ -210,12 +219,33 @@ let data = null;      // datos de la app
 let charts = {};
 let saveTimer = null;
 
+const ordenar = arr => arr.sort((a, b) => a.localeCompare(b, "es"));
+
 function datosVacios() {
   return {
     movimientos: [], presupuestos: {}, inversiones: [], snapshots: {},
-    categorias: CATS_DEFAULT.slice(),
+    subcatsGasto: SUBCATS_GASTO_DEFAULT.slice(),
+    subcatsIngreso: SUBCATS_INGRESO_DEFAULT.slice(),
     config: { tipoDolar: "blue", cotizacion: null, cotizacionFecha: null }
   };
+}
+
+// Adapta datos de versiones anteriores (categoría única -> categoría + subcategoría)
+function migrar(d) {
+  if (!d.subcatsGasto) {
+    const base = new Set(SUBCATS_GASTO_DEFAULT);
+    (d.categorias || []).forEach(c => base.add(c));
+    d.subcatsGasto = ordenar([...base]);
+    delete d.categorias;
+  }
+  if (!d.subcatsIngreso) d.subcatsIngreso = SUBCATS_INGRESO_DEFAULT.slice();
+  (d.movimientos || []).forEach(m => {
+    if (!m.subcategoria) {
+      m.subcategoria = m.categoria || "Otros";
+      m.categoria = "Variable";
+    }
+  });
+  return d;
 }
 
 // ---------- Configuración de Supabase ----------
@@ -347,6 +377,13 @@ function verTab(nombre) {
 }
 
 // ---------- Movimientos ----------
+function actualizarListas() {
+  const esGasto = document.getElementById("m-tipo").value === "gasto";
+  const cats = esGasto ? CATS_GASTO : CATS_INGRESO;
+  const subs = esGasto ? data.subcatsGasto : data.subcatsIngreso;
+  document.getElementById("m-categoria").innerHTML = cats.map(c => `<option>${esc(c)}</option>`).join("");
+  document.getElementById("m-subcat").innerHTML = ordenar(subs.slice()).map(c => `<option>${esc(c)}</option>`).join("");
+}
 function toggleCotizacion() {
   const esUSD = document.getElementById("m-moneda").value === "USD";
   document.getElementById("m-cotiz-label").style.display = esUSD ? "flex" : "none";
@@ -368,12 +405,14 @@ function agregarMovimiento(ev) {
     fecha: document.getElementById("m-fecha").value,
     tipo: document.getElementById("m-tipo").value,
     descripcion: document.getElementById("m-desc").value.trim(),
-    categoria: document.getElementById("m-cat").value,
+    categoria: document.getElementById("m-categoria").value,
+    subcategoria: document.getElementById("m-subcat").value,
     montoARS, montoUSD, cotizacion: cotiz
   });
   guardar();
   ev.target.reset();
   document.getElementById("m-fecha").value = hoy();
+  actualizarListas();
   toggleCotizacion();
   renderTodo();
 }
@@ -393,21 +432,22 @@ function renderMovimientos() {
     <tr>
       <td>${m.fecha.split("-").reverse().join("/")}</td>
       <td>${esc(m.descripcion)}</td>
-      <td><span class="badge">${esc(m.categoria)}</span></td>
+      <td><span class="badge cat">${esc(m.categoria)}</span></td>
+      <td><span class="badge">${esc(m.subcategoria)}</span></td>
       <td class="${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "Ingreso" : "Gasto"}</td>
       <td class="num ${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "+" : "−"}${fmtARS(m.montoARS)}</td>
       <td class="num">${m.montoUSD ? fmtUSD(m.montoUSD) + " @ " + m.cotizacion : "—"}</td>
       <td><button class="danger" onclick="borrarMovimiento('${m.id}')">×</button></td>
-    </tr>`).join("") || `<tr><td colspan="7" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
+    </tr>`).join("") || `<tr><td colspan="8" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
   const ing = movs.filter(m => m.tipo === "ingreso").reduce((s, m) => s + m.montoARS, 0);
   const gas = movs.filter(m => m.tipo === "gasto").reduce((s, m) => s + m.montoARS, 0);
   document.getElementById("m-tfoot").innerHTML = `
-    <tr><th colspan="4">Totales de ${nombreMes(mes)}</th>
+    <tr><th colspan="5">Totales de ${nombreMes(mes)}</th>
     <th class="num"><span class="green">+${fmtARS(ing)}</span> / <span class="red">−${fmtARS(gas)}</span></th>
     <th class="num" colspan="2">Balance: ${fmtARS(ing - gas)}</th></tr>`;
 }
 
-// ---------- Presupuesto ----------
+// ---------- Presupuesto (gastos por subcategoría) ----------
 function obtenerPresupuesto(mes) {
   if (data.presupuestos[mes]) return data.presupuestos[mes];
   let cursor = mes;
@@ -420,7 +460,7 @@ function obtenerPresupuesto(mes) {
     }
   }
   data.presupuestos[mes] = {};
-  data.categorias.forEach(c => data.presupuestos[mes][c] = 0);
+  data.subcatsGasto.forEach(c => data.presupuestos[mes][c] = 0);
   guardar();
   return data.presupuestos[mes];
 }
@@ -437,22 +477,23 @@ function setPresupuesto(mes, cat, valor) {
   guardar();
   renderPresupuesto();
 }
-function agregarCategoria() {
-  const nombre = prompt("Nombre de la nueva categoría:");
+function agregarSubcategoria() {
+  const nombre = prompt("Nombre de la nueva subcategoría de gasto:");
   if (!nombre || !nombre.trim()) return;
   const n = nombre.trim();
-  if (data.categorias.includes(n)) { alert("Esa categoría ya existe."); return; }
-  data.categorias.push(n);
+  if (data.subcatsGasto.includes(n)) { alert("Esa subcategoría ya existe."); return; }
+  data.subcatsGasto.push(n);
+  ordenar(data.subcatsGasto);
   guardar();
-  renderCategorias();
+  actualizarListas();
   renderPresupuesto();
 }
-function borrarCategoria(cat) {
-  if (!confirm(`¿Quitar la categoría "${cat}" del presupuesto? Los movimientos ya cargados no se borran.`)) return;
-  data.categorias = data.categorias.filter(c => c !== cat);
+function borrarSubcategoria(cat) {
+  if (!confirm(`¿Quitar la subcategoría "${cat}" del presupuesto? Los movimientos ya cargados no se borran.`)) return;
+  data.subcatsGasto = data.subcatsGasto.filter(c => c !== cat);
   Object.values(data.presupuestos).forEach(p => delete p[cat]);
   guardar();
-  renderCategorias();
+  actualizarListas();
   renderPresupuesto();
 }
 function renderPresupuesto() {
@@ -460,8 +501,8 @@ function renderPresupuesto() {
   const pres = obtenerPresupuesto(mes);
   const movs = movsDelMes(mes).filter(m => m.tipo === "gasto");
   const gastado = {};
-  movs.forEach(m => gastado[m.categoria] = (gastado[m.categoria] || 0) + m.montoARS);
-  const cats = [...new Set([...data.categorias, ...Object.keys(gastado)])];
+  movs.forEach(m => gastado[m.subcategoria] = (gastado[m.subcategoria] || 0) + m.montoARS);
+  const cats = ordenar([...new Set([...data.subcatsGasto, ...Object.keys(gastado)])]);
   let totP = 0, totG = 0;
   document.getElementById("p-tbody").innerHTML = cats.map(cat => {
     const p = pres[cat] || 0, g = gastado[cat] || 0;
@@ -474,7 +515,7 @@ function renderPresupuesto() {
       <td class="num">${fmtARS(g)}</td>
       <td><div class="progress"><div style="width:${pct}%;background:${color}"></div></div></td>
       <td class="num ${p - g < 0 ? "red" : ""}">${fmtARS(p - g)}</td>
-      <td><button class="danger" title="Quitar categoría" onclick="borrarCategoria('${esc(cat)}')">×</button></td>
+      <td><button class="danger" title="Quitar subcategoría" onclick="borrarSubcategoria('${esc(cat)}')">×</button></td>
     </tr>`;
   }).join("");
   document.getElementById("p-tfoot").innerHTML = `
@@ -541,11 +582,11 @@ function renderResumen() {
   if (typeof Chart === "undefined") return;
 
   const porCat = {};
-  movs.filter(m => m.tipo === "gasto").forEach(m => porCat[m.categoria] = (porCat[m.categoria] || 0) + m.montoARS);
+  movs.filter(m => m.tipo === "gasto").forEach(m => porCat[m.subcategoria] = (porCat[m.subcategoria] || 0) + m.montoARS);
   dibujar("chartCategorias", {
     type: "doughnut",
     data: { labels: Object.keys(porCat), datasets: [{ data: Object.values(porCat),
-      backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#64748b","#ea580c"] }] },
+      backgroundColor: ["#2563eb","#16a34a","#dc2626","#d97706","#7c3aed","#0891b2","#db2777","#65a30d","#64748b","#ea580c","#0d9488","#a21caf","#ca8a04","#4f46e5"] }] },
     options: { plugins: { legend: { position: "right" } } }
   });
 
@@ -575,11 +616,6 @@ function dibujar(id, config) {
   charts[id] = new Chart(document.getElementById(id), config);
 }
 
-// ---------- Categorías en selects ----------
-function renderCategorias() {
-  document.getElementById("m-cat").innerHTML = data.categorias.map(c => `<option>${esc(c)}</option>`).join("");
-}
-
 // ---------- Export / Import ----------
 function exportar() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
@@ -596,9 +632,10 @@ function importar(ev) {
     try {
       const d = JSON.parse(reader.result);
       if (!d.movimientos || !d.config) throw new Error("formato inválido");
-      data = d;
+      data = migrar(d);
       guardar();
       renderCotizacion();
+      actualizarListas();
       renderTodo();
       alert("Datos importados correctamente.");
     } catch (e) { alert("El archivo no es un backup válido de esta app."); }
@@ -618,13 +655,14 @@ async function iniciarSesion() {
   const { data: s } = await sb.auth.getSession();
   if (!s.session) return;
   usuario = s.session.user;
-  data = await cargarNube();
-  if (!data) return;
+  const nube = await cargarNube();
+  if (!nube) return;
+  data = migrar(nube);
   document.getElementById("screen-login").style.display = "none";
   document.getElementById("m-fecha").value = hoy();
   document.getElementById("m-mes").value = mesActual();
   document.getElementById("p-mes").value = mesActual();
-  renderCategorias();
+  actualizarListas();
   renderCotizacion();
   renderTodo();
   guardar(); // asegura que exista la fila (y sube la migración si la hubo)
