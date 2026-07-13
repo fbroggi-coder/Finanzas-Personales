@@ -22,6 +22,7 @@
   button { cursor: pointer; border: none; border-radius: 8px; padding: 8px 14px; font-size: 14px; background: var(--primary); color: #fff; }
   button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   button.danger { background: transparent; color: var(--red); padding: 2px 8px; font-size: 16px; }
+  button.edit { background: transparent; color: var(--primary); padding: 2px 8px; font-size: 14px; }
   nav { display: flex; gap: 4px; padding: 12px 24px 0; }
   nav button { background: transparent; color: var(--muted); border-radius: 8px 8px 0 0; padding: 10px 18px; font-weight: 600; }
   nav button.active { background: var(--card); color: var(--primary); border: 1px solid var(--border); border-bottom: none; }
@@ -134,7 +135,7 @@
 
   <!-- MOVIMIENTOS -->
   <section id="tab-movimientos" class="tab">
-    <form class="mov-form" onsubmit="agregarMovimiento(event)">
+    <form class="mov-form" id="form-mov" onsubmit="agregarMovimiento(event)">
       <label>Fecha<input type="date" id="m-fecha" required></label>
       <label>Tipo
         <select id="m-tipo" onchange="actualizarListas()"><option value="gasto">Gasto</option><option value="ingreso">Ingreso</option></select>
@@ -147,11 +148,12 @@
       </label>
       <label>Monto<input type="number" id="m-monto" step="0.01" min="0.01" required></label>
       <label id="m-cotiz-label" style="display:none">Cotización<input type="number" id="m-cotiz" step="0.01"></label>
-      <button type="submit">Agregar</button>
+      <button type="submit" id="m-submit">Agregar</button>
+      <button type="button" id="m-cancelar" class="secondary" style="display:none" onclick="cancelarEdicion()">Cancelar</button>
     </form>
     <div class="toolbar">
       <label>Mes: <input type="month" id="m-mes" onchange="renderMovimientos()"></label>
-      <span class="hint">Los montos en USD se pesifican con la cotización indicada.</span>
+      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento.</span>
     </div>
     <table>
       <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
@@ -210,7 +212,7 @@ const LOCAL_KEY = "finanzas_data_v1"; // datos de la versión local, para migrar
 
 const CATS_GASTO = ["Fijo", "Variable", "Vacaciones"];
 const CATS_INGRESO = ["Fijo", "Variable"];
-const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Transporte", "Vivienda"];
+const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Educación", "Electrónica", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Supermercado", "Transporte", "Vivienda"];
 const SUBCATS_INGRESO_DEFAULT = ["Alquiler", "Bono", "Comisiones", "Sueldo"];
 
 let sb = null;        // cliente de Supabase
@@ -218,6 +220,7 @@ let usuario = null;   // usuario logueado
 let data = null;      // datos de la app
 let charts = {};
 let saveTimer = null;
+let editandoId = null; // id del movimiento en edición
 
 const ordenar = arr => arr.sort((a, b) => a.localeCompare(b, "es"));
 
@@ -240,7 +243,7 @@ function migrar(d) {
   }
   if (!d.subcatsIngreso) d.subcatsIngreso = SUBCATS_INGRESO_DEFAULT.slice();
   // Asegura que las subcategorías nuevas aparezcan aunque los datos guardados sean anteriores
-  ["Impuestos"].forEach(s => {
+  ["Impuestos", "Supermercado"].forEach(s => {
     if (!d.subcatsGasto.includes(s)) { d.subcatsGasto.push(s); ordenar(d.subcatsGasto); }
   });
   (d.movimientos || []).forEach(m => {
@@ -391,7 +394,9 @@ function actualizarListas() {
 function toggleCotizacion() {
   const esUSD = document.getElementById("m-moneda").value === "USD";
   document.getElementById("m-cotiz-label").style.display = esUSD ? "flex" : "none";
-  if (esUSD) document.getElementById("m-cotiz").value = data.config.cotizacion || "";
+  if (esUSD && !document.getElementById("m-cotiz").value) {
+    document.getElementById("m-cotiz").value = data.config.cotizacion || "";
+  }
 }
 function agregarMovimiento(ev) {
   ev.preventDefault();
@@ -404,25 +409,69 @@ function agregarMovimiento(ev) {
     montoUSD = monto;
     montoARS = Math.round(monto * cotiz * 100) / 100;
   }
-  data.movimientos.push({
-    id: uid(),
+  const mov = {
+    id: editandoId || uid(),
     fecha: document.getElementById("m-fecha").value,
     tipo: document.getElementById("m-tipo").value,
     descripcion: document.getElementById("m-desc").value.trim(),
     categoria: document.getElementById("m-categoria").value,
     subcategoria: document.getElementById("m-subcat").value,
     montoARS, montoUSD, cotizacion: cotiz
-  });
+  };
+  if (editandoId) {
+    const idx = data.movimientos.findIndex(m => m.id === editandoId);
+    if (idx >= 0) data.movimientos[idx] = mov;
+  } else {
+    data.movimientos.push(mov);
+  }
   guardar();
-  ev.target.reset();
+  cancelarEdicion();
+  renderTodo();
+}
+function editarMovimiento(id) {
+  const m = data.movimientos.find(x => x.id === id);
+  if (!m) return;
+  editandoId = id;
+  document.getElementById("m-tipo").value = m.tipo;
+  actualizarListas();
+  document.getElementById("m-fecha").value = m.fecha;
+  document.getElementById("m-desc").value = m.descripcion;
+  seleccionar("m-categoria", m.categoria);
+  seleccionar("m-subcat", m.subcategoria);
+  document.getElementById("m-moneda").value = m.montoUSD ? "USD" : "ARS";
+  document.getElementById("m-cotiz").value = m.montoUSD ? (m.cotizacion || "") : "";
+  toggleCotizacion();
+  document.getElementById("m-monto").value = m.montoUSD || m.montoARS;
+  document.getElementById("m-submit").textContent = "Guardar cambios";
+  document.getElementById("m-cancelar").style.display = "inline-block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  document.getElementById("m-desc").focus();
+}
+// Selecciona un valor en un <select>; si no existe la opción (subcategoría vieja), la agrega
+function seleccionar(idSelect, valor) {
+  const sel = document.getElementById(idSelect);
+  sel.value = valor;
+  if (sel.value !== valor) {
+    const opt = document.createElement("option");
+    opt.textContent = valor;
+    sel.appendChild(opt);
+    sel.value = valor;
+  }
+}
+function cancelarEdicion() {
+  editandoId = null;
+  document.getElementById("form-mov").reset();
   document.getElementById("m-fecha").value = hoy();
+  document.getElementById("m-cotiz").value = "";
   actualizarListas();
   toggleCotizacion();
-  renderTodo();
+  document.getElementById("m-submit").textContent = "Agregar";
+  document.getElementById("m-cancelar").style.display = "none";
 }
 function borrarMovimiento(id) {
   if (!confirm("¿Borrar este movimiento?")) return;
   data.movimientos = data.movimientos.filter(m => m.id !== id);
+  if (editandoId === id) cancelarEdicion();
   guardar();
   renderTodo();
 }
@@ -441,7 +490,10 @@ function renderMovimientos() {
       <td class="${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "Ingreso" : "Gasto"}</td>
       <td class="num ${m.tipo === "ingreso" ? "green" : "red"}">${m.tipo === "ingreso" ? "+" : "−"}${fmtARS(m.montoARS)}</td>
       <td class="num">${m.montoUSD ? fmtUSD(m.montoUSD) + " @ " + m.cotizacion : "—"}</td>
-      <td><button class="danger" onclick="borrarMovimiento('${m.id}')">×</button></td>
+      <td style="white-space:nowrap">
+        <button class="edit" title="Editar" onclick="editarMovimiento('${m.id}')">✎</button>
+        <button class="danger" title="Borrar" onclick="borrarMovimiento('${m.id}')">×</button>
+      </td>
     </tr>`).join("") || `<tr><td colspan="8" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
   const ing = movs.filter(m => m.tipo === "ingreso").reduce((s, m) => s + m.montoARS, 0);
   const gas = movs.filter(m => m.tipo === "gasto").reduce((s, m) => s + m.montoARS, 0);
