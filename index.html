@@ -47,6 +47,9 @@
   form.mov-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
   form.mov-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
   form.mov-form input, form.mov-form select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+  form.mov-form label.check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--text); padding-bottom: 8px; }
+  form.mov-form label.check input { width: auto; }
+  .badge.recurrente { background: #ede9fe; color: #6d28d9; }
   table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
   th, td { padding: 10px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid var(--border); }
   th { background: #f8fafc; color: var(--muted); font-size: 12px; text-transform: uppercase; }
@@ -172,12 +175,13 @@
       </label>
       <label>Monto<input type="number" id="m-monto" step="0.01" min="0.01" required></label>
       <label id="m-cotiz-label" style="display:none">Cotización<input type="number" id="m-cotiz" step="0.01"></label>
+      <label class="check"><input type="checkbox" id="m-recurrente"> Repetir cada mes</label>
       <button type="submit" id="m-submit">Agregar</button>
       <button type="button" id="m-cancelar" class="secondary" style="display:none" onclick="cancelarEdicion()">Cancelar</button>
     </form>
     <div class="toolbar">
       <label>Mes: <input type="month" id="m-mes" onchange="renderMovimientos()"></label>
-      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento.</span>
+      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento. Tildá "Repetir cada mes" para que se cargue solo el día 1° de cada mes (solo hay que ajustar el monto si cambió).</span>
     </div>
     <table>
       <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Clase</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
@@ -279,6 +283,8 @@ function migrar(d) {
       m.categoria = "Variable";
     }
     if (m.tipo === "gasto" && !m.clase) m.clase = "Necesario";
+    if (m.recurrente === undefined) m.recurrente = false;
+    if (m.recurrenteId === undefined) m.recurrenteId = null;
   });
   return d;
 }
@@ -363,6 +369,11 @@ function mesAnterior(mes) {
   const d = new Date(a, m - 2, 1);
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
 }
+function mesSiguiente(mes) {
+  const [a, m] = mes.split("-").map(Number);
+  const d = new Date(a, m, 1);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+}
 function nombreMes(mes) {
   const [a, m] = mes.split("-").map(Number);
   return new Date(a, m - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
@@ -438,6 +449,13 @@ function agregarMovimiento(ev) {
     montoUSD = monto;
     montoARS = Math.round(monto * cotiz * 100) / 100;
   }
+  const recurrente = document.getElementById("m-recurrente").checked;
+  let recurrenteId = null;
+  if (editandoId) {
+    const existente = data.movimientos.find(m => m.id === editandoId);
+    recurrenteId = existente ? existente.recurrenteId : null;
+  }
+  if (recurrente && !recurrenteId) recurrenteId = uid();
   const mov = {
     id: editandoId || uid(),
     fecha: document.getElementById("m-fecha").value,
@@ -446,7 +464,8 @@ function agregarMovimiento(ev) {
     categoria: document.getElementById("m-categoria").value,
     clase: tipo === "gasto" ? document.getElementById("m-clase").value : null,
     subcategoria: document.getElementById("m-subcat").value,
-    montoARS, montoUSD, cotizacion: cotiz
+    montoARS, montoUSD, cotizacion: cotiz,
+    recurrente, recurrenteId
   };
   if (editandoId) {
     const idx = data.movimientos.findIndex(m => m.id === editandoId);
@@ -473,6 +492,7 @@ function editarMovimiento(id) {
   document.getElementById("m-cotiz").value = m.montoUSD ? (m.cotizacion || "") : "";
   toggleCotizacion();
   document.getElementById("m-monto").value = m.montoUSD || m.montoARS;
+  document.getElementById("m-recurrente").checked = !!m.recurrente;
   document.getElementById("m-submit").textContent = "Guardar cambios";
   document.getElementById("m-cancelar").style.display = "inline-block";
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -508,6 +528,36 @@ function borrarMovimiento(id) {
 }
 function movsDelMes(mes) { return data.movimientos.filter(m => m.fecha.slice(0, 7) === mes); }
 
+// Genera automáticamente, el día 1° de cada mes que haga falta, una copia de cada
+// movimiento marcado como recurrente (usando la última copia de la serie como base).
+function generarRecurrentes() {
+  const limite = mesActual();
+  const grupos = {};
+  data.movimientos.forEach(m => {
+    if (m.recurrenteId) (grupos[m.recurrenteId] = grupos[m.recurrenteId] || []).push(m);
+  });
+  let creoAlguno = false;
+  Object.values(grupos).forEach(serie => {
+    serie.sort((a, b) => a.fecha.localeCompare(b.fecha));
+    let ultimo = serie[serie.length - 1];
+    if (!ultimo.recurrente) return; // se dejó de repetir
+    let cursor = ultimo.fecha.slice(0, 7);
+    while (cursor < limite) {
+      cursor = mesSiguiente(cursor);
+      const yaExiste = serie.some(m => m.fecha.slice(0, 7) === cursor);
+      if (!yaExiste) {
+        const nuevo = Object.assign({}, ultimo, { id: uid(), fecha: cursor + "-01" });
+        data.movimientos.push(nuevo);
+        serie.push(nuevo);
+        ultimo = nuevo;
+        creoAlguno = true;
+      }
+    }
+  });
+  if (creoAlguno) guardar();
+  return creoAlguno;
+}
+
 function renderMovimientos() {
   const mes = document.getElementById("m-mes").value || mesActual();
   const movs = movsDelMes(mes).sort((a, b) => (a.descripcion || "").localeCompare(b.descripcion || "", "es"));
@@ -515,7 +565,7 @@ function renderMovimientos() {
   tbody.innerHTML = movs.map(m => `
     <tr>
       <td>${m.fecha.split("-").reverse().join("/")}</td>
-      <td>${esc(m.descripcion)}</td>
+      <td>${esc(m.descripcion)}${m.recurrente ? ' <span class="badge recurrente" title="Se repite cada mes">🔁</span>' : ""}</td>
       <td><span class="badge cat">${esc(m.categoria)}</span></td>
       <td>${m.tipo === "gasto" ? `<span class="badge clase">${esc(m.clase || "Necesario")}</span>` : "—"}</td>
       <td><span class="badge">${esc(m.subcategoria)}</span></td>
@@ -820,6 +870,7 @@ async function iniciarSesion() {
   document.getElementById("p-mes").value = mesActual();
   actualizarListas();
   renderCotizacion();
+  generarRecurrentes();
   renderTodo();
   guardar(); // asegura que exista la fila (y sube la migración si la hubo)
   fetchCotizacion(false);
