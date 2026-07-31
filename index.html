@@ -42,6 +42,8 @@
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
   .chips label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; cursor: pointer; user-select: none; }
   .chips input { accent-color: var(--primary); cursor: pointer; }
+  .total-label { text-align: center; font-size: 15px; font-weight: 700; color: var(--text); margin-top: 10px; }
+  .total-label span { color: var(--muted); font-weight: 400; }
   form.mov-form { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 18px; }
   form.mov-form label { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); gap: 4px; }
   form.mov-form input, form.mov-form select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
@@ -142,6 +144,7 @@
         </h3>
         <div class="chips" id="g-filtros"></div>
         <canvas id="chartCategorias"></canvas>
+        <div class="total-label" id="g-total"></div>
       </div>
       <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
       <div class="chart-card"><h3>Composición del patrimonio (USD)</h3><canvas id="chartComposicion"></canvas></div>
@@ -687,6 +690,7 @@ function renderResumen() {
   const visibles = claves.filter(k => !excluidos.has(k));
   const totalVisible = visibles.reduce((s, k) => s + grupos[k], 0);
   const pctDe = v => totalVisible ? (v / totalVisible * 100) : 0;
+  document.getElementById("g-total").innerHTML = `<span>Total gastado:</span> ${fmtARS(totalVisible)}`;
 
   if (typeof Chart === "undefined") return;
   dibujar("chartCategorias", {
