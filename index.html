@@ -145,6 +145,7 @@
         <div class="chips" id="g-filtros"></div>
         <canvas id="chartCategorias"></canvas>
         <div class="total-label" id="g-total"></div>
+        <div class="total-label" id="g-balance"></div>
       </div>
       <div class="chart-card"><h3>Patrimonio en USD</h3><canvas id="chartPatrimonio"></canvas></div>
       <div class="chart-card"><h3>Composición del patrimonio (USD)</h3><canvas id="chartComposicion"></canvas></div>
@@ -691,6 +692,10 @@ function renderResumen() {
   const totalVisible = visibles.reduce((s, k) => s + grupos[k], 0);
   const pctDe = v => totalVisible ? (v / totalVisible * 100) : 0;
   document.getElementById("g-total").innerHTML = `<span>Total gastado:</span> ${fmtARS(totalVisible)}`;
+  const balTeorico = ing - totalVisible;
+  const balEl = document.getElementById("g-balance");
+  balEl.innerHTML = `<span>Balance teórico:</span> ${fmtARS(balTeorico)}`;
+  balEl.className = "total-label " + (balTeorico >= 0 ? "green" : "red");
 
   if (typeof Chart === "undefined") return;
   dibujar("chartCategorias", {
