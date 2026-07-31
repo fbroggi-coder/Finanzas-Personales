@@ -23,6 +23,7 @@
   button.secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
   button.danger { background: transparent; color: var(--red); padding: 2px 8px; font-size: 16px; }
   button.edit { background: transparent; color: var(--primary); padding: 2px 8px; font-size: 14px; }
+  button.stop { background: transparent; color: var(--amber); padding: 2px 8px; font-size: 14px; }
   nav { display: flex; gap: 4px; padding: 12px 24px 0; }
   nav button { background: transparent; color: var(--muted); border-radius: 8px 8px 0 0; padding: 10px 18px; font-weight: 600; }
   nav button.active { background: var(--card); color: var(--primary); border: 1px solid var(--border); border-bottom: none; }
@@ -181,7 +182,7 @@
     </form>
     <div class="toolbar">
       <label>Mes: <input type="month" id="m-mes" onchange="renderMovimientos()"></label>
-      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento. Tildá "Repetir cada mes" para que se cargue solo el día 1° de cada mes (solo hay que ajustar el monto si cambió).</span>
+      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento. Tildá "Repetir cada mes" para que se cargue solo el día 1° de cada mes (solo hay que ajustar el monto si cambió). Usá ⏹ en la última cuota para dejar de repetirlo.</span>
     </div>
     <table>
       <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Clase</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
@@ -528,6 +529,23 @@ function borrarMovimiento(id) {
 }
 function movsDelMes(mes) { return data.movimientos.filter(m => m.fecha.slice(0, 7) === mes); }
 
+// True si "m" es la cuota más reciente de su serie recurrente (la única que controla si se sigue repitiendo)
+function esUltimoDeSerie(m) {
+  if (!m.recurrenteId) return false;
+  const maxFecha = data.movimientos
+    .filter(x => x.recurrenteId === m.recurrenteId)
+    .reduce((mx, x) => (x.fecha > mx ? x.fecha : mx), "");
+  return m.fecha === maxFecha;
+}
+function detenerRecurrencia(id) {
+  const m = data.movimientos.find(x => x.id === id);
+  if (!m) return;
+  if (!confirm(`¿Dejar de repetir "${m.descripcion}"? Dejará de generarse a partir del próximo mes; lo ya cargado no se borra.`)) return;
+  m.recurrente = false;
+  guardar();
+  renderTodo();
+}
+
 // Genera automáticamente, el día 1° de cada mes que haga falta, una copia de cada
 // movimiento marcado como recurrente (usando la última copia de la serie como base).
 function generarRecurrentes() {
@@ -574,6 +592,7 @@ function renderMovimientos() {
       <td class="num">${m.montoUSD ? fmtUSD(m.montoUSD) + " @ " + m.cotizacion : "—"}</td>
       <td style="white-space:nowrap">
         <button class="edit" title="Editar" onclick="editarMovimiento('${m.id}')">✎</button>
+        ${m.recurrente && esUltimoDeSerie(m) ? `<button class="stop" title="Dejar de repetir" onclick="detenerRecurrencia('${m.id}')">⏹</button>` : ""}
         <button class="danger" title="Borrar" onclick="borrarMovimiento('${m.id}')">×</button>
       </td>
     </tr>`).join("") || `<tr><td colspan="9" style="color:var(--muted)">Sin movimientos en ${nombreMes(mes)}.</td></tr>`;
