@@ -69,7 +69,14 @@
   .auth-card h2 { font-size: 20px; }
   .auth-card p { font-size: 13px; color: var(--muted); }
   .auth-card input { padding: 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
+  .auth-card label { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
   .auth-card .error { color: var(--red); font-size: 13px; min-height: 16px; }
+  .modal-option { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text); margin-bottom: 6px; }
+  .modal-option input[type="number"] { width: 70px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  button.link-btn { background: none; border: none; color: var(--primary); font-size: 12px; padding: 0; text-decoration: underline; }
+  .plantilla-box { display: flex; align-items: center; gap: 6px; }
+  .plantilla-box select { padding: 7px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; }
   #sync-status { font-size: 12px; color: var(--muted); }
   @media (max-width: 760px) { .charts { grid-template-columns: 1fr; } }
 </style>
@@ -98,6 +105,52 @@
     <div class="error" id="auth-error"></div>
     <button onclick="ingresar()">Ingresar</button>
     <button class="secondary" onclick="crearCuenta()">Crear cuenta nueva</button>
+  </div>
+</div>
+
+<!-- POPUP: configurar recurrencia (Siempre / Cantidad de meses) -->
+<div id="modal-recurrente" class="overlay" style="display:none">
+  <div class="auth-card">
+    <h2>🔁 Repetir cada mes</h2>
+    <p>Elegí durante cuánto tiempo se va a repetir este movimiento.</p>
+    <label class="modal-option"><input type="radio" name="rec-modo" value="siempre" checked> Siempre (hasta que lo detenga manualmente)</label>
+    <label class="modal-option"><input type="radio" name="rec-modo" value="cantidad"> Cantidad de meses:
+      <input type="number" id="rec-cantidad" min="2" step="1" value="2" onfocus="document.querySelector('input[name=rec-modo][value=cantidad]').checked=true">
+    </label>
+    <p class="hint" style="margin:0">Ej: para una compra en 2 cuotas, poné 2 — se carga este mes y el próximo, y después se detiene solo.</p>
+    <div class="error" id="rec-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="cancelarModalRecurrente()">Cancelar</button>
+      <button onclick="confirmarModalRecurrente()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP: copiar gastado de un mes anterior como presupuesto -->
+<div id="modal-copiar-gastado" class="overlay" style="display:none">
+  <div class="auth-card">
+    <h2>📋 Copiar gastado de un mes</h2>
+    <p>Elegí qué mes usar como base. Se va a copiar lo efectivamente <strong>gastado</strong> en cada subcategoría ese mes, como presupuesto de <strong id="cg-mes-destino"></strong>.</p>
+    <label>Mes a copiar<input type="month" id="cg-mes-origen"></label>
+    <div class="error" id="cg-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="cerrarModalCopiarGastado()">Cancelar</button>
+      <button onclick="confirmarCopiarGastado()">Copiar</button>
+    </div>
+  </div>
+</div>
+
+<!-- POPUP: guardar plantilla de presupuesto -->
+<div id="modal-guardar-plantilla" class="overlay" style="display:none">
+  <div class="auth-card">
+    <h2>💾 Guardar como plantilla</h2>
+    <p>Vas a guardar el presupuesto de <strong id="gp-mes-origen"></strong> con un nombre, para poder aplicarlo a cualquier mes futuro.</p>
+    <label>Nombre de la plantilla<input type="text" id="gp-nombre" placeholder="Ej: Presupuesto base"></label>
+    <div class="error" id="gp-error"></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="cerrarModalGuardarPlantilla()">Cancelar</button>
+      <button onclick="confirmarGuardarPlantilla()">Guardar</button>
+    </div>
   </div>
 </div>
 
@@ -176,13 +229,16 @@
       </label>
       <label>Monto<input type="number" id="m-monto" step="0.01" min="0.01" required></label>
       <label id="m-cotiz-label" style="display:none">Cotización<input type="number" id="m-cotiz" step="0.01"></label>
-      <label class="check"><input type="checkbox" id="m-recurrente"> Repetir cada mes</label>
+      <label class="check">
+        <input type="checkbox" id="m-recurrente" onchange="onCambioRecurrente()"> Repetir cada mes
+        <button type="button" id="m-recurrente-config" class="link-btn" style="display:none" onclick="abrirModalRecurrente()">(config.)</button>
+      </label>
       <button type="submit" id="m-submit">Agregar</button>
       <button type="button" id="m-cancelar" class="secondary" style="display:none" onclick="cancelarEdicion()">Cancelar</button>
     </form>
     <div class="toolbar">
       <label>Mes: <input type="month" id="m-mes" onchange="renderMovimientos()"></label>
-      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento. Tildá "Repetir cada mes" para que se cargue solo el día 1° de cada mes (solo hay que ajustar el monto si cambió). Usá ⏹ en la última cuota para dejar de repetirlo.</span>
+      <span class="hint">Los montos en USD se pesifican con la cotización indicada. Usá ✎ para editar un movimiento. Tildá "Repetir cada mes" y elegí si es "Siempre" o una "Cantidad de meses" (ideal para cuotas: si ponés 2, se carga este mes y el próximo, y se detiene solo). Usá ⏹ para dejar de repetirlo antes de tiempo.</span>
     </div>
     <table>
       <thead><tr><th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Clase</th><th>Subcategoría</th><th>Tipo</th><th class="num">Monto ARS</th><th class="num">Origen</th><th></th></tr></thead>
@@ -195,10 +251,18 @@
   <section id="tab-presupuesto" class="tab">
     <div class="toolbar">
       <label>Mes: <input type="month" id="p-mes" onchange="renderPresupuesto()"></label>
-      <button class="secondary" onclick="copiarMesAnterior()">Copiar del mes anterior</button>
+      <button class="secondary" onclick="abrirModalCopiarGastado()">Copiar gastado de un mes anterior</button>
       <button class="secondary" onclick="agregarSubcategoria()">+ Subcategoría</button>
     </div>
-    <p class="hint">Presupuesto de gastos por subcategoría. Si un mes no tiene presupuesto, se crea automáticamente copiando el del mes anterior.</p>
+    <div class="toolbar">
+      <div class="plantilla-box">
+        <select id="p-plantilla-select"></select>
+        <button class="secondary" onclick="aplicarPlantilla()">Aplicar plantilla</button>
+        <button class="danger" title="Borrar plantilla" onclick="borrarPlantilla()">×</button>
+      </div>
+      <button class="secondary" onclick="abrirModalGuardarPlantilla()">💾 Guardar este presupuesto como plantilla</button>
+    </div>
+    <p class="hint">Presupuesto de gastos por subcategoría. Si un mes no tiene presupuesto cargado, se crea automáticamente copiando el del mes anterior. Con "Copiar gastado de un mes anterior" podés elegir cualquier mes pasado y usar lo efectivamente gastado ese mes como base del presupuesto actual. Con las plantillas podés armar un presupuesto una vez, guardarlo con un nombre, y aplicarlo a cualquier mes futuro.</p>
     <table>
       <thead><tr><th>Subcategoría</th><th class="num">Presupuesto (ARS)</th><th class="num">Gastado (ARS)</th><th>Avance</th><th class="num">Disponible</th><th></th></tr></thead>
       <tbody id="p-tbody"></tbody>
@@ -253,12 +317,14 @@ let saveTimer = null;
 let editandoId = null;            // id del movimiento en edición
 let dimGastos = "subcategoria";   // dimensión del gráfico de gastos
 let excluidos = new Set();        // valores excluidos del gráfico
+let recurrenteConfigPendiente = null; // { total: null|number } configurado en el popup de recurrencia
 
 const ordenar = arr => arr.sort((a, b) => a.localeCompare(b, "es"));
 
 function datosVacios() {
   return {
     movimientos: [], presupuestos: {}, inversiones: [], snapshots: {},
+    plantillasPresupuesto: {},
     subcatsGasto: SUBCATS_GASTO_DEFAULT.slice(),
     subcatsIngreso: SUBCATS_INGRESO_DEFAULT.slice(),
     config: { tipoDolar: "blue", cotizacion: null, cotizacionFecha: null }
@@ -274,6 +340,7 @@ function migrar(d) {
     delete d.categorias;
   }
   if (!d.subcatsIngreso) d.subcatsIngreso = SUBCATS_INGRESO_DEFAULT.slice();
+  if (!d.plantillasPresupuesto) d.plantillasPresupuesto = {};
   // Asegura que las subcategorías nuevas aparezcan aunque los datos guardados sean anteriores
   SUBCATS_NUEVAS.forEach(s => {
     if (!d.subcatsGasto.includes(s)) { d.subcatsGasto.push(s); ordenar(d.subcatsGasto); }
@@ -286,6 +353,7 @@ function migrar(d) {
     if (m.tipo === "gasto" && !m.clase) m.clase = "Necesario";
     if (m.recurrente === undefined) m.recurrente = false;
     if (m.recurrenteId === undefined) m.recurrenteId = null;
+    if (m.recurrenteTotal === undefined) m.recurrenteTotal = null;
   });
   return d;
 }
@@ -438,6 +506,42 @@ function toggleCotizacion() {
     document.getElementById("m-cotiz").value = data.config.cotizacion || "";
   }
 }
+
+// ---------- Popup de recurrencia (Siempre / Cantidad de meses) ----------
+function onCambioRecurrente() {
+  const chk = document.getElementById("m-recurrente");
+  if (chk.checked) {
+    abrirModalRecurrente();
+  } else {
+    recurrenteConfigPendiente = null;
+    document.getElementById("m-recurrente-config").style.display = "none";
+  }
+}
+function abrirModalRecurrente() {
+  const existente = editandoId ? data.movimientos.find(m => m.id === editandoId) : null;
+  const total = existente ? existente.recurrenteTotal : (recurrenteConfigPendiente ? recurrenteConfigPendiente.total : null);
+  document.querySelector(`input[name="rec-modo"][value="${total ? "cantidad" : "siempre"}"]`).checked = true;
+  document.getElementById("rec-cantidad").value = total || 2;
+  document.getElementById("rec-error").textContent = "";
+  document.getElementById("modal-recurrente").style.display = "flex";
+}
+function cancelarModalRecurrente() {
+  document.getElementById("modal-recurrente").style.display = "none";
+  if (!recurrenteConfigPendiente) document.getElementById("m-recurrente").checked = false;
+}
+function confirmarModalRecurrente() {
+  const modo = document.querySelector('input[name="rec-modo"]:checked').value;
+  let total = null;
+  if (modo === "cantidad") {
+    total = parseInt(document.getElementById("rec-cantidad").value, 10);
+    if (!(total >= 2)) { document.getElementById("rec-error").textContent = "Ingresá un número de 2 o más."; return; }
+  }
+  recurrenteConfigPendiente = { total };
+  document.getElementById("m-recurrente").checked = true;
+  document.getElementById("m-recurrente-config").style.display = "inline-block";
+  document.getElementById("modal-recurrente").style.display = "none";
+}
+
 function agregarMovimiento(ev) {
   ev.preventDefault();
   const tipo = document.getElementById("m-tipo").value;
@@ -451,12 +555,18 @@ function agregarMovimiento(ev) {
     montoARS = Math.round(monto * cotiz * 100) / 100;
   }
   const recurrente = document.getElementById("m-recurrente").checked;
-  let recurrenteId = null;
+  let recurrenteId = null, recurrenteTotal = null;
   if (editandoId) {
     const existente = data.movimientos.find(m => m.id === editandoId);
     recurrenteId = existente ? existente.recurrenteId : null;
+    recurrenteTotal = existente ? existente.recurrenteTotal : null;
   }
-  if (recurrente && !recurrenteId) recurrenteId = uid();
+  if (recurrente) {
+    if (!recurrenteId) recurrenteId = uid();
+    if (recurrenteConfigPendiente) recurrenteTotal = recurrenteConfigPendiente.total;
+  } else {
+    recurrenteTotal = null;
+  }
   const mov = {
     id: editandoId || uid(),
     fecha: document.getElementById("m-fecha").value,
@@ -466,7 +576,7 @@ function agregarMovimiento(ev) {
     clase: tipo === "gasto" ? document.getElementById("m-clase").value : null,
     subcategoria: document.getElementById("m-subcat").value,
     montoARS, montoUSD, cotizacion: cotiz,
-    recurrente, recurrenteId
+    recurrente, recurrenteId, recurrenteTotal
   };
   if (editandoId) {
     const idx = data.movimientos.findIndex(m => m.id === editandoId);
@@ -494,6 +604,8 @@ function editarMovimiento(id) {
   toggleCotizacion();
   document.getElementById("m-monto").value = m.montoUSD || m.montoARS;
   document.getElementById("m-recurrente").checked = !!m.recurrente;
+  document.getElementById("m-recurrente-config").style.display = m.recurrente ? "inline-block" : "none";
+  recurrenteConfigPendiente = m.recurrente ? { total: m.recurrenteTotal || null } : null;
   document.getElementById("m-submit").textContent = "Guardar cambios";
   document.getElementById("m-cancelar").style.display = "inline-block";
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -512,9 +624,11 @@ function seleccionar(idSelect, valor) {
 }
 function cancelarEdicion() {
   editandoId = null;
+  recurrenteConfigPendiente = null;
   document.getElementById("form-mov").reset();
   document.getElementById("m-fecha").value = hoy();
   document.getElementById("m-cotiz").value = "";
+  document.getElementById("m-recurrente-config").style.display = "none";
   actualizarListas();
   toggleCotizacion();
   document.getElementById("m-submit").textContent = "Agregar";
@@ -537,6 +651,21 @@ function esUltimoDeSerie(m) {
     .reduce((mx, x) => (x.fecha > mx ? x.fecha : mx), "");
   return m.fecha === maxFecha;
 }
+// Número de cuota de "m" dentro de su serie (1-based, ordenado por fecha)
+function numeroCuota(m) {
+  if (!m.recurrenteId) return null;
+  const serie = data.movimientos.filter(x => x.recurrenteId === m.recurrenteId).sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return serie.findIndex(x => x.id === m.id) + 1;
+}
+function badgeRecurrente(m) {
+  if (!m.recurrenteId) return "";
+  if (m.recurrenteTotal) {
+    const n = numeroCuota(m);
+    return ` <span class="badge recurrente" title="Cuota ${n} de ${m.recurrenteTotal}">${n}/${m.recurrenteTotal}</span>`;
+  }
+  if (m.recurrente) return ' <span class="badge recurrente" title="Se repite cada mes">🔁</span>';
+  return "";
+}
 function detenerRecurrencia(id) {
   const m = data.movimientos.find(x => x.id === id);
   if (!m) return;
@@ -548,6 +677,7 @@ function detenerRecurrencia(id) {
 
 // Genera automáticamente, el día 1° de cada mes que haga falta, una copia de cada
 // movimiento marcado como recurrente (usando la última copia de la serie como base).
+// Si la serie tiene una cantidad total de meses definida (recurrenteTotal), se detiene sola al llegar al límite.
 function generarRecurrentes() {
   const limite = mesActual();
   const grupos = {};
@@ -559,8 +689,10 @@ function generarRecurrentes() {
     serie.sort((a, b) => a.fecha.localeCompare(b.fecha));
     let ultimo = serie[serie.length - 1];
     if (!ultimo.recurrente) return; // se dejó de repetir
+    if (ultimo.recurrenteTotal && serie.length >= ultimo.recurrenteTotal) return; // ya se generaron todas las cuotas
     let cursor = ultimo.fecha.slice(0, 7);
     while (cursor < limite) {
+      if (ultimo.recurrenteTotal && serie.length >= ultimo.recurrenteTotal) break;
       cursor = mesSiguiente(cursor);
       const yaExiste = serie.some(m => m.fecha.slice(0, 7) === cursor);
       if (!yaExiste) {
@@ -583,7 +715,7 @@ function renderMovimientos() {
   tbody.innerHTML = movs.map(m => `
     <tr>
       <td>${m.fecha.split("-").reverse().join("/")}</td>
-      <td>${esc(m.descripcion)}${m.recurrente ? ' <span class="badge recurrente" title="Se repite cada mes">🔁</span>' : ""}</td>
+      <td>${esc(m.descripcion)}${badgeRecurrente(m)}</td>
       <td><span class="badge cat">${esc(m.categoria)}</span></td>
       <td>${m.tipo === "gasto" ? `<span class="badge clase">${esc(m.clase || "Necesario")}</span>` : "—"}</td>
       <td><span class="badge">${esc(m.subcategoria)}</span></td>
@@ -621,14 +753,87 @@ function obtenerPresupuesto(mes) {
   guardar();
   return data.presupuestos[mes];
 }
-function copiarMesAnterior() {
+
+// Popup: copiar lo GASTADO de un mes anterior (elegible) como presupuesto del mes actual
+function abrirModalCopiarGastado() {
   const mes = document.getElementById("p-mes").value || mesActual();
-  const ant = mesAnterior(mes);
-  if (!data.presupuestos[ant]) { alert("No hay presupuesto cargado en " + nombreMes(ant) + "."); return; }
-  data.presupuestos[mes] = Object.assign({}, data.presupuestos[ant]);
+  document.getElementById("cg-mes-destino").textContent = nombreMes(mes);
+  document.getElementById("cg-mes-origen").value = mesAnterior(mes);
+  document.getElementById("cg-mes-origen").max = mesAnterior(mes);
+  document.getElementById("cg-error").textContent = "";
+  document.getElementById("modal-copiar-gastado").style.display = "flex";
+}
+function cerrarModalCopiarGastado() {
+  document.getElementById("modal-copiar-gastado").style.display = "none";
+}
+function confirmarCopiarGastado() {
+  const mesDestino = document.getElementById("p-mes").value || mesActual();
+  const mesOrigen = document.getElementById("cg-mes-origen").value;
+  if (!mesOrigen) { document.getElementById("cg-error").textContent = "Elegí un mes."; return; }
+  if (mesOrigen >= mesDestino) { document.getElementById("cg-error").textContent = "Elegí un mes anterior a " + nombreMes(mesDestino) + "."; return; }
+  const movs = movsDelMes(mesOrigen).filter(m => m.tipo === "gasto");
+  if (!movs.length) { document.getElementById("cg-error").textContent = "No hay gastos cargados en " + nombreMes(mesOrigen) + "."; return; }
+  const gastado = {};
+  movs.forEach(m => gastado[m.subcategoria] = (gastado[m.subcategoria] || 0) + m.montoARS);
+  const nuevoPresupuesto = {};
+  data.subcatsGasto.forEach(c => nuevoPresupuesto[c] = Math.round(gastado[c] || 0));
+  // Incluye también subcategorías gastadas que ya no están en la lista activa
+  Object.keys(gastado).forEach(c => { if (!(c in nuevoPresupuesto)) nuevoPresupuesto[c] = Math.round(gastado[c]); });
+  data.presupuestos[mesDestino] = nuevoPresupuesto;
+  guardar();
+  cerrarModalCopiarGastado();
+  renderPresupuesto();
+}
+
+// Plantillas de presupuesto: guardar el presupuesto de un mes con nombre, para aplicarlo a futuro
+function abrirModalGuardarPlantilla() {
+  const mes = document.getElementById("p-mes").value || mesActual();
+  document.getElementById("gp-mes-origen").textContent = nombreMes(mes);
+  document.getElementById("gp-nombre").value = "";
+  document.getElementById("gp-error").textContent = "";
+  document.getElementById("modal-guardar-plantilla").style.display = "flex";
+}
+function cerrarModalGuardarPlantilla() {
+  document.getElementById("modal-guardar-plantilla").style.display = "none";
+}
+function confirmarGuardarPlantilla() {
+  const mes = document.getElementById("p-mes").value || mesActual();
+  const nombre = document.getElementById("gp-nombre").value.trim();
+  if (!nombre) { document.getElementById("gp-error").textContent = "Ponele un nombre a la plantilla."; return; }
+  if (data.plantillasPresupuesto[nombre] && !confirm(`Ya existe una plantilla "${nombre}". ¿Reemplazarla?`)) return;
+  data.plantillasPresupuesto[nombre] = Object.assign({}, obtenerPresupuesto(mes));
+  guardar();
+  renderPlantillas();
+  document.getElementById("p-plantilla-select").value = nombre;
+  cerrarModalGuardarPlantilla();
+}
+function renderPlantillas() {
+  const sel = document.getElementById("p-plantilla-select");
+  const valorPrevio = sel.value;
+  const nombres = ordenar(Object.keys(data.plantillasPresupuesto || {}));
+  sel.innerHTML = nombres.length
+    ? nombres.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")
+    : `<option value="">Sin plantillas guardadas</option>`;
+  if (nombres.includes(valorPrevio)) sel.value = valorPrevio;
+}
+function aplicarPlantilla() {
+  const nombre = document.getElementById("p-plantilla-select").value;
+  if (!nombre || !data.plantillasPresupuesto[nombre]) { alert("Elegí una plantilla guardada."); return; }
+  const mes = document.getElementById("p-mes").value || mesActual();
+  if (!confirm(`¿Aplicar la plantilla "${nombre}" como presupuesto de ${nombreMes(mes)}? Se va a reemplazar el presupuesto actual de ese mes.`)) return;
+  data.presupuestos[mes] = Object.assign({}, data.plantillasPresupuesto[nombre]);
   guardar();
   renderPresupuesto();
 }
+function borrarPlantilla() {
+  const nombre = document.getElementById("p-plantilla-select").value;
+  if (!nombre || !data.plantillasPresupuesto[nombre]) return;
+  if (!confirm(`¿Borrar la plantilla "${nombre}"?`)) return;
+  delete data.plantillasPresupuesto[nombre];
+  guardar();
+  renderPlantillas();
+}
+
 function setPresupuesto(mes, cat, valor) {
   obtenerPresupuesto(mes)[cat] = parseFloat(valor) || 0;
   guardar();
@@ -678,6 +883,7 @@ function renderPresupuesto() {
   document.getElementById("p-tfoot").innerHTML = `
     <tr><th>Total</th><th class="num">${fmtARS(totP)}</th><th class="num">${fmtARS(totG)}</th><th></th>
     <th class="num ${totP - totG < 0 ? "red" : ""}">${fmtARS(totP - totG)}</th><th></th></tr>`;
+  renderPlantillas();
 }
 
 // ---------- Inversiones ----------
