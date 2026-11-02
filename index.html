@@ -294,13 +294,7 @@
     <form class="mov-form" onsubmit="agregarInversion(event)">
       <label>Nombre<input type="text" id="i-nombre" required placeholder="Ej: Comitente Banco X"></label>
       <label>Tipo
-        <select id="i-tipo">
-          <option>Autos</option>
-          <option>Cuenta Afuera</option>
-          <option>Cuenta Bancaria</option>
-          <option>Cuenta Comitente</option>
-          <option>Inmuebles</option>
-        </select>
+        <select id="i-tipo"></select>
       </label>
       <label>Valor (USD)<input type="number" id="i-valor" step="0.01" min="0" required></label>
       <button type="submit">Agregar</button>
@@ -315,7 +309,7 @@
 
   <!-- ADMIN -->
   <section id="tab-admin" class="tab">
-    <p class="hint">Administrá las categorías y subcategorías de gastos e ingresos. Si quitás una que tiene movimientos cargados, te va a preguntar a cuál pasarlos antes de eliminarla, para que no queden sueltos.</p>
+    <p class="hint">Administrá las categorías y subcategorías de gastos e ingresos, y las categorías de patrimonio (tipos de activo). Si quitás una que tiene movimientos o activos cargados, te va a preguntar a cuál pasarlos antes de eliminarla, para que no queden sueltos.</p>
     <div class="admin-grid">
       <div class="chart-card">
         <h3>Categorías de gasto</h3>
@@ -349,6 +343,14 @@
         </div>
         <table><tbody id="adm-subingreso-tbody"></tbody></table>
       </div>
+      <div class="chart-card">
+        <h3>Categorías de patrimonio</h3>
+        <div class="admin-add">
+          <input type="text" id="adm-catpatrimonio-nueva" placeholder="Ej: Cripto">
+          <button onclick="agregarItemLista('catsPatrimonio','adm-catpatrimonio-nueva','categoría')">+ Agregar</button>
+        </div>
+        <table><tbody id="adm-catpatrimonio-tbody"></tbody></table>
+      </div>
     </div>
   </section>
 </main>
@@ -365,6 +367,7 @@ const CATS_GASTO_DEFAULT = ["Fijo", "Variable", "Vacaciones"];
 const CATS_INGRESO_DEFAULT = ["Fijo", "Variable"];
 const SUBCATS_GASTO_DEFAULT = ["Alimentos", "Donación", "Educación", "Electrónica", "Gimnasio", "Impuestos", "Ir a comer", "Ocio", "Otros", "Pasajes", "Regalo", "Ropa", "Salidas", "Salud", "Servicios", "Supermercado", "Transporte", "Vivienda"];
 const SUBCATS_INGRESO_DEFAULT = ["Alquiler", "Bono", "Comisiones", "Sueldo"];
+const CATS_PATRIMONIO_DEFAULT = ["Autos", "Cuenta Afuera", "Cuenta Bancaria", "Cuenta Comitente", "Inmuebles"];
 const SUBCATS_NUEVAS = ["Impuestos", "Supermercado", "Donación", "Gimnasio"];
 
 let sb = null;        // cliente de Supabase
@@ -388,6 +391,7 @@ function datosVacios() {
     catsIngreso: CATS_INGRESO_DEFAULT.slice(),
     subcatsGasto: SUBCATS_GASTO_DEFAULT.slice(),
     subcatsIngreso: SUBCATS_INGRESO_DEFAULT.slice(),
+    catsPatrimonio: CATS_PATRIMONIO_DEFAULT.slice(),
     config: { tipoDolar: "blue", cotizacion: null, cotizacionFecha: null }
   };
 }
@@ -404,6 +408,12 @@ function migrar(d) {
   if (!d.catsGasto) d.catsGasto = CATS_GASTO_DEFAULT.slice();
   if (!d.catsIngreso) d.catsIngreso = CATS_INGRESO_DEFAULT.slice();
   if (!d.plantillasPresupuesto) d.plantillasPresupuesto = {};
+  if (!d.catsPatrimonio) {
+    // Incluye los tipos ya usados en activos cargados, para que no queden huérfanos
+    const base = new Set(CATS_PATRIMONIO_DEFAULT);
+    (d.inversiones || []).forEach(i => { if (i.tipo) base.add(i.tipo); });
+    d.catsPatrimonio = ordenar([...base]);
+  }
   // Asegura que las subcategorías nuevas aparezcan aunque los datos guardados sean anteriores
   SUBCATS_NUEVAS.forEach(s => {
     if (!d.subcatsGasto.includes(s)) { d.subcatsGasto.push(s); ordenar(d.subcatsGasto); }
@@ -561,6 +571,10 @@ function actualizarListas() {
   document.getElementById("m-categoria").innerHTML = ordenar(cats.slice()).map(c => `<option>${esc(c)}</option>`).join("");
   document.getElementById("m-subcat").innerHTML = ordenar(subs.slice()).map(c => `<option>${esc(c)}</option>`).join("");
   document.getElementById("m-clase-label").style.display = esGasto ? "flex" : "none";
+  const selPat = document.getElementById("i-tipo");
+  const prevPat = selPat.value;
+  selPat.innerHTML = ordenar(data.catsPatrimonio.slice()).map(c => `<option>${esc(c)}</option>`).join("");
+  if (prevPat && data.catsPatrimonio.includes(prevPat)) selPat.value = prevPat;
 }
 function toggleCotizacion() {
   const esUSD = document.getElementById("m-moneda").value === "USD";
@@ -920,6 +934,7 @@ function borrarSubcategoria(cat) {
 // ---------- Admin de categorías y subcategorías ----------
 // Cuántos movimientos usan hoy un valor de categoría/subcategoría dado (para avisar antes de borrar)
 function contarUsos(campo, tipo, valor) {
+  if (tipo === "patrimonio") return data.inversiones.filter(i => i.tipo === valor).length;
   return data.movimientos.filter(m => m.tipo === tipo && m[campo] === valor).length;
 }
 function agregarItemLista(clave, inputId, etiqueta) {
@@ -941,13 +956,13 @@ function pedirQuitarItem(clave, campo, tipo, valor, etiqueta) {
   if (lista.length <= 1) { alert(`Tiene que quedar al menos una ${etiqueta}.`); return; }
   const usos = contarUsos(campo, tipo, valor);
   if (usos === 0) {
-    if (!confirm(`¿Quitar la ${etiqueta} "${valor}"? No tiene movimientos cargados.`)) return;
+    if (!confirm(`¿Quitar la ${etiqueta} "${valor}"? No tiene ${tipo === "patrimonio" ? "activos" : "movimientos"} cargados.`)) return;
     quitarDeListaYGuardar(clave, campo, valor, null, tipo);
     return;
   }
   reasignarPendiente = { clave, campo, tipo, valor };
   document.getElementById("ra-texto").innerHTML =
-    `"<strong>${esc(valor)}</strong>" tiene <strong>${usos}</strong> movimiento(s) de ${tipo === "gasto" ? "gasto" : "ingreso"} cargado(s). Elegí a qué ${etiqueta} pasarlos antes de quitarla:`;
+    `"<strong>${esc(valor)}</strong>" tiene <strong>${usos}</strong> ${tipo === "patrimonio" ? "activo(s)" : `movimiento(s) de ${tipo === "gasto" ? "gasto" : "ingreso"}`} cargado(s). Elegí a qué ${etiqueta} pasarlos antes de quitarla:`;
   const opciones = ordenar(lista.filter(x => x !== valor));
   document.getElementById("ra-destino").innerHTML = opciones.map(o => `<option>${esc(o)}</option>`).join("");
   document.getElementById("ra-error").textContent = "";
@@ -968,7 +983,9 @@ function confirmarReasignar() {
 // Quita "valor" de data[clave]. Si hay "destino", antes reasigna todos los movimientos (y el
 // presupuesto acumulado, si aplica) de "valor" a "destino".
 function quitarDeListaYGuardar(clave, campo, valor, destino, tipo) {
-  if (destino) {
+  if (destino && tipo === "patrimonio") {
+    data.inversiones.forEach(i => { if (i.tipo === valor) i.tipo = destino; });
+  } else if (destino) {
     data.movimientos.forEach(m => { if (m.tipo === tipo && m[campo] === valor) m[campo] = destino; });
     if (campo === "subcategoria" && clave === "subcatsGasto") {
       Object.keys(data.presupuestos).forEach(mes => {
@@ -994,7 +1011,7 @@ function renderListaAdmin(tbodyId, clave, campo, tipo, etiqueta) {
     const usos = contarUsos(campo, tipo, v);
     return `<tr>
       <td>${esc(v)}</td>
-      <td class="num">${usos ? `<span class="badge">${usos} mov.</span>` : `<span class="badge" style="opacity:.5">sin uso</span>`}</td>
+      <td class="num">${usos ? `<span class="badge">${usos} ${tipo === "patrimonio" ? "activo" + (usos > 1 ? "s" : "") : "mov."}</span>` : `<span class="badge" style="opacity:.5">sin uso</span>`}</td>
       <td><button class="danger" title="Quitar" onclick="pedirQuitarItem('${clave}','${campo}','${tipo}','${esc(v)}','${etiqueta}')">×</button></td>
     </tr>`;
   }).join("") || `<tr><td colspan="3" style="color:var(--muted)">Sin elementos.</td></tr>`;
@@ -1005,6 +1022,7 @@ function renderAdmin() {
   renderListaAdmin("adm-catingreso-tbody", "catsIngreso", "categoria", "ingreso", "categoría");
   renderListaAdmin("adm-subgasto-tbody", "subcatsGasto", "subcategoria", "gasto", "subcategoría");
   renderListaAdmin("adm-subingreso-tbody", "subcatsIngreso", "subcategoria", "ingreso", "subcategoría");
+  renderListaAdmin("adm-catpatrimonio-tbody", "catsPatrimonio", "tipo", "patrimonio", "categoría");
 }
 function renderPresupuesto() {
   const mes = document.getElementById("p-mes").value || mesActual();
